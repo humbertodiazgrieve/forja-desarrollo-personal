@@ -1,0 +1,6 @@
+{
+  "identifier": "default",
+  "description": "Ventana local de Forja",
+  "windows": ["main"],
+  "permissions": ["core:default", "core:window:allow-destroy"]
+}
