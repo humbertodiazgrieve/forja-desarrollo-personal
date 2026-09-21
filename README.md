@@ -71,6 +71,23 @@ El instalador queda en `src-tauri/target/release/bundle/nsis`. Usa WebView2 inst
 
 `npm run dev` abre el entorno de desarrollo web en `http://127.0.0.1:1420`. Esa vista utiliza almacenamiento del navegador, separado de SQLite, y no conecta la IA. Es una herramienta de desarrollo; para el uso diario, abre Forja instalada.
 
+## Web, PWA y Cloudflare Pages
+
+Compila la versión web con Node.js 22 o superior:
+
+```powershell
+npm ci
+npm run build
+```
+
+Publica la carpeta `dist` en Cloudflare Pages. Usa `npm run build` como comando de compilación y `dist` como directorio de salida. Define antes del build las variables públicas `VITE_SUPABASE_URL` y `VITE_SUPABASE_PUBLISHABLE_KEY` si vas a habilitar el acceso Supabase. Nunca pongas una clave `service_role` en variables `VITE_` ni en archivos públicos.
+
+En Supabase, registra el dominio final de Cloudflare Pages y la URL local de desarrollo en **Authentication > URL Configuration > Redirect URLs**. El enlace mágico usa el origen actual del navegador como destino; si el dominio no está permitido, Supabase rechazará el acceso aunque las variables sean correctas.
+
+La PWA se activa en navegadores web sobre HTTPS; `localhost` también sirve para pruebas. El service worker no se registra dentro de Tauri, no intercepta dominios externos y no cachea rutas `auth`, `rest` o `functions`. La navegación usa red primero y el shell local como respaldo; los recursos estáticos del mismo origen usan cache versionada.
+
+`public/_headers` permite conexiones al dominio estándar `*.supabase.co` y su WebSocket. Si `VITE_SUPABASE_URL` usa un dominio personalizado, agrega ese host al `connect-src` antes de desplegar. La política mantiene `script-src 'self'` sin `unsafe-inline` ni `unsafe-eval`; `style-src-attr 'unsafe-inline'` se limita a los anchos de progreso calculados por React.
+
 ## Organización
 
 - `src/domain.ts`: calendario, versiones de hábitos, métricas, XP, rachas, revisiones y validación de copias.

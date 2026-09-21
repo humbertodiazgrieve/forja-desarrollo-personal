@@ -4,3 +4,7 @@ src-tauri/target/
 test-results/
 playwright-report/
 *.log
+*.tsbuildinfo
+.env
+.env.*
+!.env.example
