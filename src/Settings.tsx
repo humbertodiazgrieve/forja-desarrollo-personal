@@ -14,6 +14,7 @@ import {
   CloudDownload,
   CloudUpload,
   RefreshCw,
+  Smartphone,
 } from 'lucide-react';
 import type { Session } from '@supabase/supabase-js';
 import type { AppState } from './domain';
@@ -31,6 +32,13 @@ import {
   saveRemoteState,
   type RemoteState,
 } from './supabase-repository';
+import {
+  getPwaInstallState,
+  promptPwaInstall,
+  subscribeToPwaInstallChanges,
+  type PwaInstallState,
+} from './pwa-install';
+import { markAutoSyncResolved } from './auto-sync';
 import { Badge, Field, Heading, Modal, type PageProps } from './ui';
 export function Settings(p: PageProps) {
   const authConfigured = isSupabaseAuthConfigured();
@@ -51,7 +59,11 @@ export function Settings(p: PageProps) {
     [remoteLoading, setRemoteLoading] = useState(false),
     [remoteBusy, setRemoteBusy] = useState(false),
     [remoteMessage, setRemoteMessage] = useState(''),
-    [remoteError, setRemoteError] = useState('');
+    [remoteError, setRemoteError] = useState(''),
+    [pwaState, setPwaState] = useState<PwaInstallState>(() => getPwaInstallState()),
+    [pwaBusy, setPwaBusy] = useState(false),
+    [pwaMessage, setPwaMessage] = useState(''),
+    [pwaError, setPwaError] = useState('');
   const input = useRef<HTMLInputElement>(null),
     mounted = useRef(true),
     authUserId = useRef<string | null>(null),
@@ -103,6 +115,10 @@ export function Settings(p: PageProps) {
       unsubscribe();
     };
   }, [authConfigured]);
+  useEffect(() => {
+    if (desktop) return;
+    return subscribeToPwaInstallChanges(setPwaState);
+  }, []);
   const refreshRemote = async (userId: string) => {
     if (!mounted.current || authUserId.current !== userId) return;
     setRemoteLoading(true);
@@ -197,6 +213,7 @@ export function Settings(p: PageProps) {
       const remote = remoteState;
       p.update((s) => Object.assign(s, remote.state));
       setModel(remote.state.model);
+      markAutoSyncResolved(remote.state, remote.revision);
       setRemoteMessage('Datos remotos descargados y aplicados al almacenamiento local.');
     } catch (e) {
       setRemoteError(`No se pudieron descargar los datos remotos. ${String(e)}`);
@@ -224,6 +241,7 @@ export function Settings(p: PageProps) {
       });
       setRemoteChecked(true);
       remoteLoadedFor.current = userId;
+      markAutoSyncResolved(p.state, newRevision);
       setRemoteMessage(`Datos locales subidos. Revisión remota ${newRevision}.`);
     } catch (e) {
       if (!mounted.current || authUserId.current !== userId) return;
@@ -235,6 +253,22 @@ export function Settings(p: PageProps) {
       } else setRemoteError(`No se pudieron subir los datos locales. ${String(e)}`);
     } finally {
       if (mounted.current && authUserId.current === userId) setRemoteBusy(false);
+    }
+  };
+  const installPwa = async () => {
+    setPwaBusy(true);
+    setPwaMessage('');
+    setPwaError('');
+    try {
+      const outcome = await promptPwaInstall();
+      if (!mounted.current) return;
+      if (outcome === 'accepted') setPwaMessage('Forja se está instalando en este dispositivo.');
+      else if (outcome === 'dismissed') setPwaMessage('La instalación se canceló.');
+      else setPwaMessage('Este navegador no ofrece instalación automática.');
+    } catch (e) {
+      if (mounted.current) setPwaError(`No se pudo iniciar la instalación. ${String(e)}`);
+    } finally {
+      if (mounted.current) setPwaBusy(false);
     }
   };
   return (
@@ -335,8 +369,8 @@ export function Settings(p: PageProps) {
               <Badge className="green">MANUAL</Badge>
             </div>
             <p>
-              Las copias remotas son opcionales y solo se actualizan cuando pulsas un botón. El
-              guardado local automático continúa activo.
+              Los cambios se sincronizan automáticamente cuando hay una sesión activa. Puedes usar
+              los botones para forzar una descarga o resolver un conflicto; el guardado local continúa activo.
             </p>
             {remoteLoading ? (
               <p aria-live="polite">Consultando tu copia remota...</p>
@@ -401,6 +435,44 @@ export function Settings(p: PageProps) {
           </div>
         </section>
       )}
+      <section className="panel settings-card">
+        <span className="habit-icon physical">
+          <Smartphone size={22} />
+        </span>
+        <div>
+          <div className="section-title">
+            <h2>Instalación en tus dispositivos</h2>
+            <Badge>{desktop ? 'ESCRITORIO' : 'PWA'}</Badge>
+          </div>
+          {desktop ? (
+            <p aria-live="polite">La aplicación de escritorio de Forja ya está instalada.</p>
+          ) : pwaState.installed ? (
+            <p aria-live="polite">Forja está instalada en este dispositivo.</p>
+          ) : pwaState.canInstall ? (
+            <>
+              <p aria-live="polite">Instala Forja para abrirla desde tu pantalla de inicio.</p>
+              <button type="button" className="secondary" disabled={pwaBusy} onClick={installPwa}>
+                <Download size={16} /> {pwaBusy ? 'Instalando...' : 'Instalar Forja'}
+              </button>
+            </>
+          ) : (
+            <p aria-live="polite">
+              Este navegador no ofrece instalación automática. En iPhone o iPad, usa Compartir y
+              elige Agregar a pantalla de inicio.
+            </p>
+          )}
+          {pwaMessage && (
+            <p className="notice" role="status" aria-live="polite">
+              {pwaMessage}
+            </p>
+          )}
+          {pwaError && (
+            <p className="error-message" role="alert">
+              {pwaError}
+            </p>
+          )}
+        </div>
+      </section>
       <section className="panel settings-card">
         <span className="habit-icon physical">
           <FolderHeart size={22} />

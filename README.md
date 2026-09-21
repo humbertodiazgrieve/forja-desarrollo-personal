@@ -28,7 +28,7 @@ Las mediciones corporales se registran manualmente. Completar misiones no cambia
 
 ## Datos y copias
 
-La instalación guarda la base `forja.sqlite` y el perfil de WebView2 en `%LOCALAPPDATA%\com.forja.personal`. La interfaz confirma el estado **Guardado local**. No hay cuentas ni sincronización.
+La instalación guarda la base `forja.sqlite` y el perfil de WebView2 en `%LOCALAPPDATA%\com.forja.personal`. La interfaz confirma el estado **Guardado local**. Si configuras Supabase e inicias sesión, los cambios también se sincronizan automáticamente entre dispositivos; los conflictos requieren una elección explícita en Ajustes.
 
 Al abrir Forja por segunda vez se enfoca la ventana existente para evitar dos instancias escribiendo sobre el mismo historial.
 

@@ -16,6 +16,7 @@ import {
   AlertCircle,
   X,
   ArrowUpRight,
+  Cloud,
 } from 'lucide-react';
 import { addDays, localDate, totalXp, validateState, type AppState } from './domain';
 import { desktop, loadState, readBackup, restoreBackup, saveState } from './storage';
@@ -26,6 +27,7 @@ import { Journal } from './Journal';
 import { Progress, WarriorPage } from './Progress';
 import { Review } from './Review';
 import { Settings } from './Settings';
+import { useAutoSync } from './auto-sync';
 import { Empty, Heading, type Page, type PageProps, type Update } from './ui';
 
 const navigation = [
@@ -57,6 +59,7 @@ export default function App() {
     if (toastTimeout.current) clearTimeout(toastTimeout.current);
     toastTimeout.current = setTimeout(() => setToast(''), 6500);
   }, []);
+  const autoSync = useAutoSync({ state, setState, notify });
   const load = () => {
     setLoadError('');
     loadState()
@@ -306,8 +309,13 @@ export default function App() {
                 ? 'Guardado local'
                 : saveStatus === 'error'
                   ? 'Error al guardar'
-                  : 'Guardando'}
+                : 'Guardando'}
             </span>
+            {autoSync.status !== 'disabled' && (
+              <span className={'save-indicator ' + autoSync.status} aria-live="polite">
+                <Cloud size={12} /> {autoSync.message}
+              </span>
+            )}
             <div className="date-control">
               <button
                 className="icon-button"
