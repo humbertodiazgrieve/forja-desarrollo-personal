@@ -260,6 +260,17 @@ export function habitsAt(s: AppState, date: string): Habit[] {
 export function missionsAt(s: AppState, date: string) {
   return habitsAt(s, date).filter((h) => h.days.includes(asDate(date).getDay()));
 }
+function plannedHabitVersionsAt(s: AppState, id: string, date: string) {
+  const weekday = asDate(date).getDay();
+  return s.habits.filter(
+    (h) =>
+      h.id === id &&
+      h.enabled &&
+      h.effectiveFrom <= date &&
+      (!h.effectiveTo || h.effectiveTo >= date) &&
+      h.days.includes(weekday),
+  );
+}
 export function isDone(s: AppState, h: Habit, date: string) {
   if (h.kind === 'journal') {
     const j = s.journals[date];
@@ -268,13 +279,36 @@ export function isDone(s: AppState, h: Habit, date: string) {
   const value = s.records[date]?.[h.id];
   return value !== undefined && (h.kind === 'calories' || value >= h.target);
 }
+function isDoneInAnyPlannedVersion(s: AppState, id: string, date: string) {
+  return plannedHabitVersionsAt(s, id, date).some((h) => isDone(s, h, date));
+}
+export function completedMissionsAt(s: AppState, date: string) {
+  const ids = new Set([
+    ...missionsAt(s, date).map((h) => h.id),
+    ...Object.keys(s.records[date] ?? {}),
+    ...(s.journals[date] ? ['journal'] : []),
+  ]);
+  return [...ids]
+    .flatMap((id) => {
+      const current = missionsAt(s, date).find((h) => h.id === id);
+      const fallback = plannedHabitVersionsAt(s, id, date).at(-1);
+      const habit = current ?? fallback;
+      return habit && isDoneInAnyPlannedVersion(s, id, date) ? [habit] : [];
+    })
+    .filter((h, i, all) => all.findIndex((x) => x.id === h.id) === i);
+}
+export function missionsWithHistoryAt(s: AppState, date: string) {
+  const byId = new Map(missionsAt(s, date).map((h) => [h.id, h]));
+  completedMissionsAt(s, date).forEach((h) => byId.set(h.id, h));
+  return [...byId.values()];
+}
 export function missionValue(s: AppState, h: Habit, date: string) {
   return h.kind === 'journal' ? (isDone(s, h, date) ? 1 : 0) : (s.records[date]?.[h.id] ?? 0);
 }
 export function totalXp(s: AppState, today = localDate()) {
   return [...new Set([...Object.keys(s.records), ...Object.keys(s.journals)])]
     .filter((d) => d <= today)
-    .reduce((sum, d) => sum + missionsAt(s, d).filter((h) => isDone(s, h, d)).length * 10, 0);
+    .reduce((sum, d) => sum + completedMissionsAt(s, d).length * 10, 0);
 }
 export function streak(s: AppState, id: string, today = localDate()) {
   let count = 0;
@@ -284,22 +318,21 @@ export function streak(s: AppState, id: string, today = localDate()) {
     .sort();
   const start = starts[0] ?? today;
   for (let d = today; d >= start; d = addDays(d, -1)) {
-    const h = missionsAt(s, d).find((x) => x.id === id);
-    if (!h) continue;
-    if (isDone(s, h, d)) count++;
-    else if (d !== today) break;
+    if (completedMissionsAt(s, d).some((h) => h.id === id)) count++;
+    else if (missionsAt(s, d).some((h) => h.id === id) && d !== today) break;
   }
   return count;
 }
 export function completion(s: AppState, start: string, end: string) {
   let planned = 0,
     done = 0;
-  datesBetween(start, end).forEach((d) =>
-    missionsAt(s, d).forEach((h) => {
-      planned++;
-      if (isDone(s, h, d)) done++;
-    }),
-  );
+  datesBetween(start, end).forEach((d) => {
+    const scheduled = missionsAt(s, d);
+    const completed = completedMissionsAt(s, d);
+    const scheduledIds = new Set(scheduled.map((h) => h.id));
+    planned += scheduled.length + completed.filter((h) => !scheduledIds.has(h.id)).length;
+    done += completed.length;
+  });
   return { planned, done, percent: planned ? Math.round((done / planned) * 100) : 0 };
 }
 export function latestMeasurement(s: AppState, id: string) {

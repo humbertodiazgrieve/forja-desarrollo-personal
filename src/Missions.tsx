@@ -5,6 +5,7 @@ import {
   missionsAt,
   missionValue,
   isDone,
+  missionsWithHistoryAt,
   streak,
   localDate,
   type Habit,
@@ -214,7 +215,7 @@ export function MissionCard({
 }
 export function Missions(p: PageProps) {
   const [area, setArea] = useState('all');
-  const all = missionsAt(p.state, p.date),
+  const all = missionsWithHistoryAt(p.state, p.date),
     list = all.filter((h) => area === 'all' || h.area === area);
   const completed = all.filter((h) => isDone(p.state, h, p.date)).length;
   return (

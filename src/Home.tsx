@@ -18,6 +18,7 @@ import {
 } from 'lucide-react';
 import {
   completion,
+  completedMissionsAt,
   addMonths,
   datesBetween,
   addDays,
@@ -25,6 +26,7 @@ import {
   localDate,
   weekStart,
   missionsAt,
+  missionsWithHistoryAt,
   isDone,
   totalXp,
   latestMeasurement,
@@ -62,9 +64,11 @@ export function Home(p: PageProps) {
     monthLabel = formatDate(monthStart, { month: 'long', year: 'numeric' }),
     monthTotals = monthDays.map((d) => ({
       date: d,
-      value: missionsAt(p.state, d).filter((h) => isDone(p.state, h, d)).length,
+      value: completedMissionsAt(p.state, d).length,
     })),
-    monthHabitIds = [...new Set(monthDays.flatMap((d) => missionsAt(p.state, d).map((h) => h.id)))],
+    monthHabitIds = [
+      ...new Set(monthDays.flatMap((d) => missionsWithHistoryAt(p.state, d).map((h) => h.id))),
+    ],
     monthHabits = monthHabitIds
       .map((id) =>
         monthDays
@@ -475,7 +479,7 @@ export function Home(p: PageProps) {
                     {h.name}
                   </strong>
                   {monthDays.map((d) => {
-                    const mission = missionsAt(p.state, d).find((x) => x.id === h.id);
+                    const mission = missionsWithHistoryAt(p.state, d).find((x) => x.id === h.id);
                     const done = !!mission && isDone(p.state, mission, d);
                     return (
                       <span

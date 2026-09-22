@@ -3,6 +3,7 @@ import {
   addDays,
   addVersion,
   applyReview,
+  completedMissionsAt,
   completion,
   emptyJournal,
   habitsAt,
@@ -55,6 +56,17 @@ describe('Calendario y planificación', () => {
   });
 });
 describe('Registros y recompensas', () => {
+  it('conserva un cumplimiento si después se cambia retroactivamente el día', () => {
+    let s = initialState(monday);
+    const strength = habitsAt(s, monday).find((h) => h.id === 'strength')!;
+    s.records[monday] = { strength: 1 };
+    s = addVersion(s, { ...strength, days: [2, 4, 5] }, monday);
+
+    expect(missionsAt(s, monday).some((h) => h.id === 'strength')).toBe(false);
+    expect(completedMissionsAt(s, monday).some((h) => h.id === 'strength')).toBe(true);
+    expect(completion(s, monday, monday)).toEqual({ planned: 7, done: 1, percent: 14 });
+    expect(totalXp(s, monday)).toBe(10);
+  });
   it('registrar cero calorías es diferente de no registrar; comer menos no da más XP', () => {
     const s = initialState(monday),
       h = missionsAt(s, monday).find((h) => h.id === 'calories')!;

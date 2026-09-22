@@ -12,6 +12,7 @@ import {
   isDone,
   localDate,
   missionsAt,
+  missionsWithHistoryAt,
   ruleSuggestions,
   suggestionSchema,
   undoReview,
@@ -50,7 +51,7 @@ export function Review(p: PageProps) {
     daily: days.map((d) => ({
       date: d,
       closed: d < today,
-      missions: missionsAt(p.state, d).map((h) => ({ id: h.id, done: isDone(p.state, h, d) })),
+      missions: missionsWithHistoryAt(p.state, d).map((h) => ({ id: h.id, done: isDone(p.state, h, d) })),
     })),
     reflections: shared
       .filter((d) => journals.includes(d))
