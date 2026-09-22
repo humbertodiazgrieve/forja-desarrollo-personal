@@ -14,7 +14,7 @@ import {
   type Goal,
   type Habit,
 } from './domain';
-import { Badge, DayPicker, Field, HabitIcon, Heading, Modal, type PageProps } from './ui';
+import { Badge, DayPicker, Field, HabitIcon, Heading, Modal, longDays, type PageProps } from './ui';
 export function Planning(p: PageProps) {
   const today = localDate(),
     [selectedMonth, setSelectedMonth] = useState(0),
@@ -25,17 +25,17 @@ export function Planning(p: PageProps) {
     [cycle, setCycle] = useState(p.state.cycleStart);
   const periods = monthPeriods(p.state.cycleStart),
     period = periods[selectedMonth],
-    schedule = habitsAt(p.state, period.start > today ? period.start : today);
+    schedule = [
+      ...new Map(
+        datesBetween(period.start, period.end)
+          .flatMap((d) => habitsAt(p.state, d))
+          .map((h) => [h.id, h] as const),
+      ).values(),
+    ];
   const openHabit = (h: Habit, monthly = false) => {
     setEditHabit(structuredClone(h));
-    setFrom(
-      !p.state.onboarded
-        ? today
-        : monthly && period.start > today
-          ? period.start
-          : addDays(today, 1),
-    );
-    setTo(monthly && period.end > today ? period.end : '');
+    setFrom(monthly ? period.start : h.effectiveFrom);
+    setTo(monthly ? period.end : h.effectiveTo ?? '');
   };
   return (
     <>
@@ -198,6 +198,12 @@ export function Planning(p: PageProps) {
                       ? `${h.days.length} veces / semana`
                       : `${h.target} ${h.unit} / ocasión`}
                   </span>
+                  <small>
+                    {h.days.length
+                      ? h.days.map((day) => longDays[day].slice(0, 3)).join(' · ')
+                      : 'Días en descanso'}{' '}
+                    · Desde {formatDate(h.effectiveFrom)}
+                  </small>
                 </div>
                 <div className="month-total">
                   <strong>{occasions.length} ocasiones</strong>
@@ -254,9 +260,8 @@ export function Planning(p: PageProps) {
           <form
             onSubmit={(e) => {
               e.preventDefault();
-              if (to && to < from) return;
-              if (p.state.onboarded && from <= today) {
-                p.notify('Los ajustes deben comenzar mañana o después.');
+              if (to && to < from) {
+                p.notify('La fecha de término debe ser igual o posterior al inicio.');
                 return;
               }
               p.update((s) => {
@@ -275,10 +280,8 @@ export function Planning(p: PageProps) {
                 <input
                   required
                   type="date"
-                  min={p.state.onboarded ? addDays(today, 1) : undefined}
                   value={from}
                   onChange={(e) => setFrom(e.target.value)}
-                  disabled={!p.state.onboarded}
                 />
               </Field>
               <Field label="Hasta (opcional)">
@@ -287,7 +290,6 @@ export function Planning(p: PageProps) {
                   min={from}
                   value={to}
                   onChange={(e) => setTo(e.target.value)}
-                  disabled={!p.state.onboarded}
                 />
               </Field>
             </div>
@@ -315,8 +317,8 @@ export function Planning(p: PageProps) {
             )}
             <p className="notice">
               {p.state.onboarded
-                ? 'Los cambios se aplicarán a las fechas indicadas. Al terminar un ajuste temporal, volverá la programación vigente anterior.'
-                : 'Estás configurando la programación inicial. Después de guardar el trimestre, los cambios se aplicarán solo a fechas futuras.'}
+                ? 'Puedes corregir una programación pasada o futura. Si indicas una fecha de término, después volverá la programación anterior.'
+                : 'Estás configurando la programación inicial. La fecha y los días elegidos quedarán guardados para esta actividad.'}
             </p>
             <button className="primary full">Guardar programación</button>
           </form>

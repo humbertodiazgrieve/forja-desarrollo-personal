@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, type CSSProperties } from 'react';
 import {
   ArrowRight,
   ArrowUp,
@@ -14,11 +14,14 @@ import {
   Sparkles,
   Flame,
   Shield,
+  ListChecks,
 } from 'lucide-react';
 import {
   completion,
+  addMonths,
   datesBetween,
   addDays,
+  habitsAt,
   localDate,
   weekStart,
   missionsAt,
@@ -29,7 +32,17 @@ import {
   formatDate,
   uid,
 } from './domain';
-import { Badge, Empty, Field, Heading, Modal, SparkChart, Warrior, type PageProps } from './ui';
+import {
+  Badge,
+  Empty,
+  Field,
+  HabitIcon,
+  Heading,
+  Modal,
+  SparkChart,
+  Warrior,
+  type PageProps,
+} from './ui';
 import { MissionCard } from './Missions';
 export function Home(p: PageProps) {
   const [physicalMetric, setPhysicalMetric] = useState('weight'),
@@ -41,6 +54,25 @@ export function Home(p: PageProps) {
     week = completion(p.state, weekStart(p.date), p.date),
     daily = missionsAt(p.state, p.date),
     completed = daily.filter((h) => isDone(p.state, h, p.date)).length;
+  const monthStart = p.date.slice(0, 7) + '-01',
+    monthEnd = addDays(addMonths(monthStart, 1), -1),
+    visibleMonthEnd = monthEnd > p.date ? p.date : monthEnd,
+    monthDays = datesBetween(monthStart, visibleMonthEnd),
+    monthCompletion = completion(p.state, monthStart, visibleMonthEnd),
+    monthLabel = formatDate(monthStart, { month: 'long', year: 'numeric' }),
+    monthTotals = monthDays.map((d) => ({
+      date: d,
+      value: missionsAt(p.state, d).filter((h) => isDone(p.state, h, d)).length,
+    })),
+    monthHabitIds = [...new Set(monthDays.flatMap((d) => missionsAt(p.state, d).map((h) => h.id)))],
+    monthHabits = monthHabitIds
+      .map((id) =>
+        monthDays
+          .map((d) => habitsAt(p.state, d).find((h) => h.id === id))
+          .find((h) => !!h),
+      )
+      .filter((h): h is NonNullable<typeof h> => !!h),
+    monthGridStyle = { '--month-days': monthDays.length } as CSSProperties;
   const quote = p.state.rotateQuotes
     ? p.state.quotes[
         Math.floor(new Date(p.date + 'T12:00:00').getTime() / 86400000) %
@@ -384,6 +416,99 @@ export function Home(p: PageProps) {
           </div>
         </div>
       </div>
+      <section className="panel monthly-refuge">
+        <div className="section-title">
+          <div>
+            <h2>
+              Misiones de {monthLabel}{' '}
+              <span className="count">
+                {monthCompletion.done}/{monthCompletion.planned}
+              </span>
+            </h2>
+            <p>Tu registro diario de misiones completadas hasta hoy.</p>
+          </div>
+          <ListChecks size={20} />
+        </div>
+        <div className="monthly-summary">
+          <div>
+            <strong>{monthCompletion.percent}%</strong>
+            <span>cumplimiento del mes</span>
+          </div>
+          <div>
+            <strong>{monthCompletion.done}</strong>
+            <span>misiones completadas</span>
+          </div>
+          <div>
+            <strong>{monthCompletion.planned}</strong>
+            <span>ocasiones programadas</span>
+          </div>
+        </div>
+        {monthDays.length ? (
+          <>
+            <div className="monthly-chart">
+              <SparkChart data={monthTotals} color="#96b692" unit="misiones" small />
+            </div>
+            <div
+              className="monthly-checklist"
+              role="table"
+              aria-label={`Checklist de misiones de ${monthLabel}`}
+            >
+              <div className="monthly-grid monthly-grid-header" style={monthGridStyle} role="row">
+                <span role="columnheader">Misión</span>
+                {monthDays.map((d) => (
+                  <span key={d} role="columnheader" title={formatDate(d)}>
+                    {new Date(d + 'T12:00:00').getDate()}
+                  </span>
+                ))}
+              </div>
+              {monthHabits.map((h) => (
+                <div
+                  key={h.id}
+                  className="monthly-grid monthly-grid-row"
+                  style={monthGridStyle}
+                  role="row"
+                >
+                  <strong role="rowheader" title={h.name}>
+                    <span className={'habit-icon ' + h.area}>
+                      <HabitIcon id={h.id} size={13} />
+                    </span>
+                    {h.name}
+                  </strong>
+                  {monthDays.map((d) => {
+                    const mission = missionsAt(p.state, d).find((x) => x.id === h.id);
+                    const done = !!mission && isDone(p.state, mission, d);
+                    return (
+                      <span
+                        key={d}
+                        className={
+                          !mission ? 'not-scheduled' : done ? 'mission-done' : 'mission-pending'
+                        }
+                        title={`${formatDate(d)} · ${!mission ? 'No programada' : done ? 'Completada' : 'Pendiente'}`}
+                        role="cell"
+                      >
+                        {done ? '✓' : mission ? '·' : ''}
+                      </span>
+                    );
+                  })}
+                </div>
+              ))}
+            </div>
+            <div className="monthly-legend">
+              <span>
+                <i className="mission-done">✓</i> Completada
+              </span>
+              <span>
+                <i className="mission-pending">·</i> Pendiente
+              </span>
+              <span>
+                <i className="not-scheduled" /> No programada
+              </span>
+            </div>
+          </>
+        ) : (
+          <Empty title="Sin días registrados">Cuando completes una misión, aparecerá aquí.</Empty>
+        )}
+      </section>
       <div className={'dashboard-grid ' + (custom ? 'customizing' : '')}>
         {p.state.widgets
           .filter((w) => w.visible || custom)

@@ -1160,6 +1160,140 @@ main {
 .widget.mental > .text-button {
   margin-top: 13px;
 }
+.monthly-refuge {
+  overflow: hidden;
+}
+.monthly-summary {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+  margin: 2px 0 13px;
+  padding: 12px 0 15px;
+  border-bottom: 1px solid #ffffff08;
+}
+.monthly-summary > div {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.monthly-summary strong {
+  color: #d9d9c5;
+  font-size: 22px;
+  font-weight: 500;
+}
+.monthly-summary span {
+  color: #849079;
+  font-size: 9px;
+}
+.monthly-chart {
+  height: 175px;
+  margin: 0 -6px 16px;
+}
+.monthly-checklist {
+  overflow-x: auto;
+  padding-bottom: 4px;
+}
+.monthly-grid {
+  display: grid;
+  grid-template-columns: minmax(185px, 1fr) repeat(var(--month-days), 27px);
+  align-items: center;
+  min-width: calc(185px + var(--month-days) * 27px);
+}
+.monthly-grid-header {
+  padding: 0 0 8px;
+  color: #849079;
+  border-bottom: 1px solid #ffffff0b;
+  font-size: 9px;
+  text-align: center;
+}
+.monthly-grid-header > span:first-child {
+  padding-left: 5px;
+  text-align: left;
+}
+.monthly-grid-row {
+  min-height: 36px;
+  border-bottom: 1px solid #ffffff06;
+  font-size: 11px;
+  text-align: center;
+}
+.monthly-grid-row > strong {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+  gap: 7px;
+  padding: 3px 8px 3px 5px;
+  color: #cbd4c4;
+  font-size: 10px;
+  font-weight: 500;
+  text-align: left;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.monthly-grid-row > strong .habit-icon {
+  flex: 0 0 22px;
+  width: 22px;
+  height: 22px;
+}
+.monthly-grid-row > span:not(:first-child) {
+  display: grid;
+  place-items: center;
+  width: 20px;
+  height: 20px;
+  justify-self: center;
+  border: 1px solid #ffffff08;
+  border-radius: 4px;
+  color: #637462;
+}
+.monthly-grid-row > span.mission-done {
+  background: #8eb39725;
+  border-color: #8eb39760;
+  color: #a5d0a8;
+}
+.monthly-grid-row > span.mission-pending {
+  background: #d2b66d12;
+  border-color: #d2b66d25;
+  color: #b59b5f;
+}
+.monthly-grid-row > span.not-scheduled {
+  background: transparent;
+  border-color: transparent;
+}
+.monthly-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 13px;
+  margin-top: 12px;
+  color: #849079;
+  font-size: 9px;
+}
+.monthly-legend span {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+.monthly-legend i {
+  display: inline-grid;
+  place-items: center;
+  width: 16px;
+  height: 16px;
+  border: 1px solid #ffffff0b;
+  border-radius: 3px;
+  font-style: normal;
+}
+.monthly-legend i.mission-done {
+  background: #8eb39725;
+  border-color: #8eb39760;
+  color: #a5d0a8;
+}
+.monthly-legend i.mission-pending {
+  background: #d2b66d12;
+  border-color: #d2b66d25;
+  color: #b59b5f;
+}
+.monthly-legend i.not-scheduled {
+  border-color: transparent;
+}
 .widget-toolbar {
   display: flex;
   align-items: center;
