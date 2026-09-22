@@ -2,7 +2,6 @@ import { useEffect, useState } from 'react';
 import { Check, ChevronRight, Play, Pause, Flame, Plus, Pencil, RotateCcw } from 'lucide-react';
 import {
   areaNames,
-  missionsAt,
   missionValue,
   isDone,
   missionsWithHistoryAt,
@@ -30,11 +29,15 @@ export function MissionCard({
       }
     }),
     [now, setNow] = useState(Date.now());
-  const write = (n: number) =>
+  const write = (n: number) => {
+    const wasDone = done;
     p.update((s) => {
       s.records[p.date] ??= {};
       s.records[p.date][h.id] = Math.round(n * 100) / 100;
     });
+    const nowDone = h.kind === 'calories' || n >= h.target;
+    if (!wasDone && nowDone) p.notify(`+10 XP de experiencia · ${h.name} conquistada`);
+  };
   useEffect(() => {
     if (!timer) return;
     const id = setInterval(() => setNow(Date.now()), 1000);
@@ -57,8 +60,7 @@ export function MissionCard({
     setTimer(t);
     localStorage.setItem(timerKey, JSON.stringify(t));
   };
-  const progress = done ? 100 : Math.min(100, (value / h.target) * 100),
-    racha = streak(p.state, h.id);
+  const racha = streak(p.state, h.id);
   return (
     <article className={`mission-card ${h.area} ${done ? 'done' : ''} ${compact ? 'compact' : ''}`}>
       <div className="mission-top">
@@ -87,22 +89,13 @@ export function MissionCard({
         ) : h.kind === 'calories' ? (
           `Referencia diaria · ${h.target} kcal`
         ) : (
-          <>
-            <b>{value}</b>
-            <span>
-              {' '}
-              / {h.target} {h.unit}
-            </span>
-          </>
+          `Objetivo · ${h.target} ${h.unit}`
         )}
         {timer && (
           <span className="timer-text">
             {Math.floor(elapsed)}:{String(Math.floor(elapsed * 60) % 60).padStart(2, '0')}
           </span>
         )}
-      </div>
-      <div className="progress-track">
-        <span style={{ width: progress + '%' }} />
       </div>
       <div className="mission-actions">
         {h.kind === 'journal' ? (
@@ -120,7 +113,7 @@ export function MissionCard({
             onClick={() => write(done ? 0 : h.target)}
           >
             {done ? <Check size={15} /> : <Plus size={15} />}{' '}
-            {done ? 'Completada · deshacer' : 'Marcar sesión'}
+            {done ? 'Misión conquistada · deshacer' : 'Completar misión'}
           </button>
         ) : (
           <>
@@ -247,16 +240,9 @@ export function Missions(p: PageProps) {
             {
               key: 'pending',
               title: 'Por conquistar',
-              match: (h: Habit) =>
-                !isDone(p.state, h, p.date) && missionValue(p.state, h, p.date) === 0,
+              match: (h: Habit) => !isDone(p.state, h, p.date),
             },
-            {
-              key: 'progress',
-              title: 'En camino',
-              match: (h: Habit) =>
-                !isDone(p.state, h, p.date) && missionValue(p.state, h, p.date) > 0,
-            },
-            { key: 'done', title: 'Conquistadas', match: (h: Habit) => isDone(p.state, h, p.date) },
+            { key: 'done', title: 'Conquistado', match: (h: Habit) => isDone(p.state, h, p.date) },
           ].map((column) => (
             <section key={column.key} className={'mission-column ' + column.key}>
               <h2>

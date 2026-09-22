@@ -17,6 +17,7 @@ import {
   X,
   ArrowUpRight,
   Cloud,
+  Sparkles,
 } from 'lucide-react';
 import { addDays, localDate, totalXp, validateState, type AppState } from './domain';
 import { desktop, loadState, readBackup, restoreBackup, saveState } from './storage';
@@ -46,7 +47,8 @@ export default function App() {
     [date, setDate] = useState(localDate()),
     [saveStatus, setSaveStatus] = useState('loading'),
     [saveError, setSaveError] = useState(''),
-    [toast, setToast] = useState('');
+    [toast, setToast] = useState(''),
+    [toastKey, setToastKey] = useState(0);
   const chain = useRef<Promise<void>>(Promise.resolve()),
     saving = useRef(false),
     failed = useRef(false),
@@ -56,6 +58,7 @@ export default function App() {
     lastToday = useRef(localDate());
   const notify = useCallback((text: string) => {
     setToast(text);
+    setToastKey((key) => key + 1);
     if (toastTimeout.current) clearTimeout(toastTimeout.current);
     toastTimeout.current = setTimeout(() => setToast(''), 6500);
   }, []);
@@ -234,6 +237,7 @@ export default function App() {
         </section>
       </>
     );
+  const xpToast = toast.match(/^\+(\d+) XP de experiencia(?: · (.*))?$/);
   return (
     <div className="app-shell">
       <aside className="sidebar">
@@ -367,9 +371,18 @@ export default function App() {
         </main>
       </div>
       {toast && (
-        <div className="toast" role="status">
-          <Check size={17} />
-          <span>{toast}</span>
+        <div key={toastKey} className={'toast ' + (xpToast ? 'xp-toast' : '')} role="status">
+          {xpToast ? <Sparkles size={18} /> : <Check size={17} />}
+          <span>
+            {xpToast ? (
+              <>
+                <strong>+{xpToast[1]} XP</strong> de experiencia
+                {xpToast[2] ? ` · ${xpToast[2]}` : ''}
+              </>
+            ) : (
+              toast
+            )}
+          </span>
           <button className="icon-button" aria-label="Cerrar aviso" onClick={() => setToast('')}>
             <X size={15} />
           </button>

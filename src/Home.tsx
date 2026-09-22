@@ -19,7 +19,6 @@ import {
 import {
   completion,
   completedMissionsAt,
-  addMonths,
   datesBetween,
   addDays,
   habitsAt,
@@ -32,6 +31,7 @@ import {
   latestMeasurement,
   goalProgress,
   formatDate,
+  monthPeriods,
   uid,
 } from './domain';
 import {
@@ -50,21 +50,31 @@ export function Home(p: PageProps) {
   const [physicalMetric, setPhysicalMetric] = useState('weight'),
     [custom, setCustom] = useState(false),
     [quotes, setQuotes] = useState(false),
-    [quoteText, setQuoteText] = useState('');
+    [quoteText, setQuoteText] = useState(''),
+    [selectedPeriod, setSelectedPeriod] = useState(() => {
+      const periods = monthPeriods(p.state.cycleStart);
+      const current = periods.findIndex((period) => p.date >= period.start && p.date <= period.end);
+      return current >= 0 ? current : p.date < periods[0].start ? 0 : 2;
+    });
   const xp = totalXp(p.state),
     level = 1 + Math.floor(xp / 100),
     week = completion(p.state, weekStart(p.date), p.date),
     daily = missionsAt(p.state, p.date),
     completed = daily.filter((h) => isDone(p.state, h, p.date)).length;
-  const monthStart = p.date.slice(0, 7) + '-01',
-    monthEnd = addDays(addMonths(monthStart, 1), -1),
-    visibleMonthEnd = monthEnd > p.date ? p.date : monthEnd,
-    monthDays = datesBetween(monthStart, visibleMonthEnd),
-    monthCompletion = completion(p.state, monthStart, visibleMonthEnd),
-    monthLabel = formatDate(monthStart, { month: 'long', year: 'numeric' }),
+  const planningPeriods = monthPeriods(p.state.cycleStart),
+    planningMonth = selectedPeriod,
+    activePeriod = planningPeriods[planningMonth],
+    visiblePeriodEnd = p.date < activePeriod.start
+      ? addDays(activePeriod.start, -1)
+      : p.date > activePeriod.end
+        ? activePeriod.end
+        : p.date,
+    monthDays = datesBetween(activePeriod.start, activePeriod.end),
+    monthCompletion = completion(p.state, activePeriod.start, visiblePeriodEnd),
+    monthHeading = `Misiones · Mes ${planningMonth + 1}`,
     monthTotals = monthDays.map((d) => ({
       date: d,
-      value: completedMissionsAt(p.state, d).length,
+      value: d > visiblePeriodEnd ? null : completedMissionsAt(p.state, d).length,
     })),
     monthHabitIds = [
       ...new Set(monthDays.flatMap((d) => missionsWithHistoryAt(p.state, d).map((h) => h.id))),
@@ -424,14 +434,33 @@ export function Home(p: PageProps) {
         <div className="section-title">
           <div>
             <h2>
-              Misiones de {monthLabel}{' '}
+              {monthHeading}{' '}
               <span className="count">
                 {monthCompletion.done}/{monthCompletion.planned}
               </span>
             </h2>
-            <p>Tu registro diario de misiones completadas hasta hoy.</p>
+            <p>
+              {formatDate(activePeriod.start)} — {formatDate(activePeriod.end)} ·{' '}
+              {p.date < activePeriod.start ? 'Aún no inicia' : `Avance al ${formatDate(visiblePeriodEnd)}`}
+            </p>
           </div>
-          <ListChecks size={20} />
+          <div className="monthly-heading-tools">
+            <label className="monthly-period-control">
+              <span>Mes</span>
+              <select
+                aria-label="Mes del trimestre"
+                value={planningMonth}
+                onChange={(e) => setSelectedPeriod(Number(e.target.value))}
+              >
+                {planningPeriods.map((period, index) => (
+                  <option key={period.start} value={index}>
+                    Mes {index + 1} · {formatDate(period.start)} — {formatDate(period.end)}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <ListChecks size={20} />
+          </div>
         </div>
         <div className="monthly-summary">
           <div>
@@ -455,12 +484,17 @@ export function Home(p: PageProps) {
             <div
               className="monthly-checklist"
               role="table"
-              aria-label={`Checklist de misiones de ${monthLabel}`}
+              aria-label={`Checklist de misiones, mes ${planningMonth + 1}`}
             >
               <div className="monthly-grid monthly-grid-header" style={monthGridStyle} role="row">
                 <span role="columnheader">Misión</span>
                 {monthDays.map((d) => (
-                  <span key={d} role="columnheader" title={formatDate(d)}>
+                  <span
+                    key={d}
+                    className={[0, 6].includes(new Date(d + 'T12:00:00').getDay()) ? 'weekend' : ''}
+                    role="columnheader"
+                    title={formatDate(d, { weekday: 'long', day: 'numeric', month: 'short' })}
+                  >
                     {new Date(d + 'T12:00:00').getDate()}
                   </span>
                 ))}
@@ -480,17 +514,18 @@ export function Home(p: PageProps) {
                   </strong>
                   {monthDays.map((d) => {
                     const mission = missionsWithHistoryAt(p.state, d).find((x) => x.id === h.id);
-                    const done = !!mission && isDone(p.state, mission, d);
+                    const future = d > visiblePeriodEnd;
+                    const done = !future && !!mission && isDone(p.state, mission, d);
                     return (
                       <span
                         key={d}
                         className={
-                          !mission ? 'not-scheduled' : done ? 'mission-done' : 'mission-pending'
+                          `${future ? 'future' : !mission ? 'not-scheduled' : done ? 'mission-done' : 'mission-pending'}${[0, 6].includes(new Date(d + 'T12:00:00').getDay()) ? ' weekend' : ''}`
                         }
-                        title={`${formatDate(d)} · ${!mission ? 'No programada' : done ? 'Completada' : 'Pendiente'}`}
+                        title={`${formatDate(d)} · ${future ? 'Futura' : !mission ? 'No programada' : done ? 'Completada' : 'Pendiente'}`}
                         role="cell"
                       >
-                        {done ? '✓' : mission ? '·' : ''}
+                        {future ? '' : done ? '✓' : mission ? '·' : ''}
                       </span>
                     );
                   })}

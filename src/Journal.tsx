@@ -80,7 +80,7 @@ export function Journal(p: PageProps) {
                 change('published', true);
                 p.notify(
                   missionsAt(p.state, p.date).some((h) => h.id === 'journal')
-                    ? 'Entrada completada. Tu misión de escritura suma 10 XP.'
+                    ? '+10 XP de experiencia · Misión de escritura conquistada'
                     : 'Entrada completada para esta fecha, sin misión programada.',
                 );
               }}
