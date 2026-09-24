@@ -1,12 +1,8 @@
 import { useEffect, useRef, useState, type Dispatch, type SetStateAction } from 'react';
-import { initialState, type AppState } from './domain';
+import type { AppState } from './domain';
 import { getCurrentSession, isSupabaseAuthConfigured, subscribeToAuthChanges } from './supabase-auth';
-import {
-  loadRemoteState,
-  RemoteConflictError,
-  saveRemoteState,
-  type RemoteState,
-} from './supabase-repository';
+import { loadRemoteState, saveRemoteState } from './supabase-repository';
+import { AutoSyncEngine } from './auto-sync-engine';
 
 export type AutoSyncStatus = 'disabled' | 'checking' | 'syncing' | 'synced' | 'conflict' | 'error';
 export type AutoSyncState = { status: AutoSyncStatus; revision: number | null; message: string };
@@ -18,16 +14,15 @@ type AutoSyncOptions = {
   notify?: (message: string) => void;
 };
 
-const SYNC_DEBOUNCE_MS = 1200;
 const SYNC_POLL_MS = 30000;
 const RESOLUTION_EVENT = 'forja-sync-resolved';
 
-function serialize(state: AppState): string {
-  return JSON.stringify(state);
-}
-
-function isDefaultState(state: AppState): boolean {
-  return serialize(state) === serialize(initialState(state.cycleStart));
+function getBrowserStorage(): Pick<Storage, 'getItem' | 'setItem'> | undefined {
+  try {
+    return typeof window === 'undefined' ? undefined : window.localStorage;
+  } catch {
+    return undefined;
+  }
 }
 
 function statusMessage(status: AutoSyncStatus): string {
@@ -46,201 +41,103 @@ export function markAutoSyncResolved(state: AppState, revision: number) {
 
 export function useAutoSync({ state, setState, notify }: AutoSyncOptions): AutoSyncState {
   const configured = isSupabaseAuthConfigured();
-  const [userId, setUserId] = useState<string | null>(null);
   const [sync, setSync] = useState<AutoSyncState>({
     status: configured ? 'checking' : 'disabled',
     revision: null,
     message: statusMessage(configured ? 'checking' : 'disabled'),
   });
-  const latestState = useRef<AppState | null>(state),
-    mounted = useRef(true),
-    userRef = useRef<string | null>(null),
-    revisionRef = useRef<number | null>(null),
-    baselineRef = useRef<string | null>(null),
-    readyRef = useRef(false),
-    conflictRef = useRef<RemoteState | null>(null),
-    applyingRemote = useRef(false),
-    initializedUser = useRef<string | null>(null),
-    uploadTimer = useRef<ReturnType<typeof setTimeout> | null>(null),
-    conflictNotified = useRef(false);
-
-  const updateStatus = (status: AutoSyncStatus, revision = revisionRef.current) =>
-    mounted.current && setSync({ status, revision, message: statusMessage(status) });
-
-  useEffect(() => () => {
-    mounted.current = false;
-  }, []);
+  const mounted = useRef(false);
+  const setStateRef = useRef(setState);
+  const notifyRef = useRef(notify);
+  setStateRef.current = setState;
+  notifyRef.current = notify;
+  const engineRef = useRef<AutoSyncEngine | null>(null);
+  if (!engineRef.current) {
+    engineRef.current = new AutoSyncEngine({
+      loadRemote: loadRemoteState,
+      saveRemote: saveRemoteState,
+      applyRemote: (remoteState) => setStateRef.current(remoteState),
+      onStatus: (status, revision) => {
+        if (mounted.current)
+          setSync({ status, revision, message: statusMessage(status) });
+      },
+      notify: (message) => notifyRef.current?.(message),
+      storage: getBrowserStorage(),
+    });
+  }
+  const engine = engineRef.current;
 
   useEffect(() => {
-    latestState.current = state;
-  }, [state]);
+    mounted.current = true;
+    engine.start();
+    return () => {
+      mounted.current = false;
+      engine.stop();
+    };
+  }, [engine]);
+
+  useEffect(() => {
+    engine.setLocalState(state);
+  }, [engine, state]);
 
   useEffect(() => {
     if (!configured) return;
     let active = true;
-    const changeUser = (next: string | null) => {
+    let knownUserId: string | null | undefined;
+    const changeUser = (nextUserId: string | null) => {
       if (!active) return;
-      if (next !== userRef.current) {
-        userRef.current = next;
-        initializedUser.current = null;
-        revisionRef.current = null;
-        baselineRef.current = null;
-        readyRef.current = false;
-        conflictRef.current = null;
-        conflictNotified.current = false;
-      }
-      setUserId(next);
-      updateStatus(next ? 'checking' : 'disabled', null);
+      if (nextUserId === knownUserId) return;
+      knownUserId = nextUserId;
+      engine.setUser(nextUserId);
+      if (!nextUserId && mounted.current)
+        setSync({ status: 'disabled', revision: null, message: '' });
     };
     let unsubscribe = () => {};
     try {
-      unsubscribe = subscribeToAuthChanges((_event, session) => changeUser(session?.user.id ?? null));
+      unsubscribe = subscribeToAuthChanges((_event, session) =>
+        changeUser(session?.user.id ?? null),
+      );
       getCurrentSession()
         .then((session) => changeUser(session?.user.id ?? null))
-        .catch(() => updateStatus('error', null));
+        .catch(() => {
+          if (active && mounted.current)
+            setSync({ status: 'error', revision: null, message: statusMessage('error') });
+        });
     } catch {
-      updateStatus('error', null);
+      if (mounted.current)
+        setSync({ status: 'error', revision: null, message: statusMessage('error') });
     }
     return () => {
       active = false;
       unsubscribe();
     };
-  }, [configured]);
+  }, [configured, engine]);
 
   useEffect(() => {
-    if (!userId || !state || initializedUser.current === userId) return;
-    let cancelled = false;
-    initializedUser.current = userId;
-    updateStatus('checking', null);
-    const initialize = async () => {
-      try {
-        const remote = await loadRemoteState();
-        if (cancelled || userRef.current !== userId) return;
-        if (!remote) {
-          updateStatus('syncing', 0);
-          const revision = await saveRemoteState(state, 0);
-          if (cancelled || userRef.current !== userId) return;
-          revisionRef.current = revision;
-          baselineRef.current = serialize(state);
-          readyRef.current = true;
-          updateStatus('synced', revision);
-          return;
-        }
-        const localSerialized = serialize(state);
-        if (localSerialized === serialize(remote.state)) {
-          revisionRef.current = remote.revision;
-          baselineRef.current = localSerialized;
-          readyRef.current = true;
-          updateStatus('synced', remote.revision);
-        } else if (isDefaultState(state)) {
-          applyingRemote.current = true;
-          setState(remote.state);
-          applyingRemote.current = false;
-          revisionRef.current = remote.revision;
-          baselineRef.current = serialize(remote.state);
-          readyRef.current = true;
-          updateStatus('synced', remote.revision);
-        } else {
-          conflictRef.current = remote;
-          readyRef.current = false;
-          updateStatus('conflict', remote.revision);
-          if (!conflictNotified.current) {
-            conflictNotified.current = true;
-            notify?.('Hay cambios locales y remotos distintos. Revisa Ajustes para elegir cuál conservar.');
-          }
-        }
-      } catch {
-        if (!cancelled && userRef.current === userId) updateStatus('error');
-      }
+    if (!configured) return;
+    const refresh = () => {
+      if (document.visibilityState === 'visible') engine.refresh();
     };
-    void initialize();
-    return () => {
-      cancelled = true;
-    };
-  }, [state, setState, userId]);
-
-  useEffect(() => {
-    if (!userId || !state || !readyRef.current || applyingRemote.current || conflictRef.current) return;
-    const current = serialize(state);
-    if (current === baselineRef.current) return;
-    if (uploadTimer.current) clearTimeout(uploadTimer.current);
-    uploadTimer.current = setTimeout(async () => {
-      const expectedRevision = revisionRef.current;
-      const currentState = latestState.current;
-      if (expectedRevision === null || !currentState || userRef.current !== userId) return;
-      updateStatus('syncing', expectedRevision);
-      try {
-        const revision = await saveRemoteState(currentState, expectedRevision);
-        if (userRef.current !== userId) return;
-        revisionRef.current = revision;
-        baselineRef.current = serialize(currentState);
-        updateStatus('synced', revision);
-      } catch (error) {
-        if (userRef.current !== userId) return;
-        conflictRef.current = error instanceof RemoteConflictError ? await loadRemoteState().catch(() => null) : null;
-        updateStatus(error instanceof RemoteConflictError ? 'conflict' : 'error');
-        if (error instanceof RemoteConflictError && !conflictNotified.current) {
-          conflictNotified.current = true;
-          notify?.('Los datos remotos cambiaron en otro dispositivo. Revisa Ajustes antes de continuar.');
-        }
-      }
-    }, SYNC_DEBOUNCE_MS);
-    return () => {
-      if (uploadTimer.current) clearTimeout(uploadTimer.current);
-    };
-  }, [state, userId, notify]);
-
-  useEffect(() => {
-    const refresh = async () => {
-      if (!userId || !readyRef.current || conflictRef.current) return;
-      const remote = await loadRemoteState().catch(() => null);
-      if (!remote || userRef.current !== userId || remote.revision <= (revisionRef.current ?? 0)) return;
-      const local = latestState.current;
-      if (!local || serialize(local) !== baselineRef.current) {
-        conflictRef.current = remote;
-        updateStatus('conflict', remote.revision);
-        if (!conflictNotified.current) {
-          conflictNotified.current = true;
-          notify?.('Hay cambios remotos pendientes. Revisa Ajustes para resolverlos.');
-        }
-        return;
-      }
-      applyingRemote.current = true;
-      setState(remote.state);
-      applyingRemote.current = false;
-      revisionRef.current = remote.revision;
-      baselineRef.current = serialize(remote.state);
-      updateStatus('synced', remote.revision);
-    };
-    if (!userId) return;
-    const interval = setInterval(() => void refresh(), SYNC_POLL_MS);
+    const interval = setInterval(refresh, SYNC_POLL_MS);
     window.addEventListener('focus', refresh);
     window.addEventListener('online', refresh);
+    document.addEventListener('visibilitychange', refresh);
     return () => {
       clearInterval(interval);
       window.removeEventListener('focus', refresh);
       window.removeEventListener('online', refresh);
+      document.removeEventListener('visibilitychange', refresh);
     };
-  }, [setState, userId, notify]);
+  }, [configured, engine]);
 
   useEffect(() => {
     const resolve = (event: Event) => {
       const detail = (event as CustomEvent<SyncResolutionDetail>).detail;
-      if (!detail || !userRef.current) return;
-      conflictRef.current = null;
-      conflictNotified.current = false;
-      revisionRef.current = detail.revision;
-      baselineRef.current = serialize(detail.state);
-      readyRef.current = true;
-      updateStatus('synced', detail.revision);
+      if (detail) engine.resolve(detail.state, detail.revision);
     };
     window.addEventListener(RESOLUTION_EVENT, resolve);
     return () => window.removeEventListener(RESOLUTION_EVENT, resolve);
-  }, []);
-
-  useEffect(() => () => {
-    if (uploadTimer.current) clearTimeout(uploadTimer.current);
-  }, []);
+  }, [engine]);
 
   return sync;
 }

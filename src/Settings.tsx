@@ -204,21 +204,33 @@ export function Settings(p: PageProps) {
       if (mounted.current) setAuthBusy(false);
     }
   };
-  const downloadRemote = () => {
-    if (!remoteState || !mounted.current) return;
+  const downloadRemote = async () => {
+    const userId = authUserId.current;
+    if (!userId || !mounted.current) return;
     setRemoteBusy(true);
     setRemoteMessage('');
     setRemoteError('');
     try {
-      const remote = remoteState;
+      const remote = await loadRemoteState();
+      if (!mounted.current || authUserId.current !== userId) return;
+      if (!remote) {
+        setRemoteError('No hay datos remotos para descargar.');
+        return;
+      }
+      await restoreBackup(remote.state);
+      if (!mounted.current || authUserId.current !== userId) return;
       p.update((s) => Object.assign(s, remote.state));
       setModel(remote.state.model);
       markAutoSyncResolved(remote.state, remote.revision);
+      setRemoteState(remote);
+      setRemoteChecked(true);
+      remoteLoadedFor.current = userId;
       setRemoteMessage('Datos remotos descargados y aplicados al almacenamiento local.');
     } catch (e) {
-      setRemoteError(`No se pudieron descargar los datos remotos. ${String(e)}`);
+      if (mounted.current && authUserId.current === userId)
+        setRemoteError(`No se pudieron descargar los datos remotos. ${String(e)}`);
     } finally {
-      if (mounted.current) setRemoteBusy(false);
+      if (mounted.current && authUserId.current === userId) setRemoteBusy(false);
     }
   };
   const uploadLocal = async () => {
