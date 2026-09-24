@@ -7,7 +7,7 @@ import { AutoSyncEngine } from './auto-sync-engine';
 export type AutoSyncStatus = 'disabled' | 'checking' | 'syncing' | 'synced' | 'conflict' | 'error';
 export type AutoSyncState = { status: AutoSyncStatus; revision: number | null; message: string };
 
-type SyncResolutionDetail = { state: AppState; revision: number };
+type SyncResolutionDetail = { state: AppState; revision: number; source: 'download' | 'upload' };
 type AutoSyncOptions = {
   state: AppState | null;
   setState: Dispatch<SetStateAction<AppState | null>>;
@@ -34,9 +34,15 @@ function statusMessage(status: AutoSyncStatus): string {
   return '';
 }
 
-export function markAutoSyncResolved(state: AppState, revision: number) {
+export function markAutoSyncResolved(
+  state: AppState,
+  revision: number,
+  source: 'download' | 'upload' = 'upload',
+) {
   if (typeof window !== 'undefined')
-    window.dispatchEvent(new CustomEvent<SyncResolutionDetail>(RESOLUTION_EVENT, { detail: { state, revision } }));
+    window.dispatchEvent(
+      new CustomEvent<SyncResolutionDetail>(RESOLUTION_EVENT, { detail: { state, revision, source } }),
+    );
 }
 
 export function useAutoSync({ state, setState, notify }: AutoSyncOptions): AutoSyncState {
@@ -133,7 +139,7 @@ export function useAutoSync({ state, setState, notify }: AutoSyncOptions): AutoS
   useEffect(() => {
     const resolve = (event: Event) => {
       const detail = (event as CustomEvent<SyncResolutionDetail>).detail;
-      if (detail) engine.resolve(detail.state, detail.revision);
+      if (detail) engine.resolve(detail.state, detail.revision, detail.source);
     };
     window.addEventListener(RESOLUTION_EVENT, resolve);
     return () => window.removeEventListener(RESOLUTION_EVENT, resolve);

@@ -38,9 +38,9 @@ import {
   subscribeToPwaInstallChanges,
   type PwaInstallState,
 } from './pwa-install';
-import { markAutoSyncResolved } from './auto-sync';
+import { markAutoSyncResolved, type AutoSyncState } from './auto-sync';
 import { Badge, Field, Heading, Modal, type PageProps } from './ui';
-export function Settings(p: PageProps) {
+export function Settings(p: PageProps & { autoSync: AutoSyncState }) {
   const authConfigured = isSupabaseAuthConfigured();
   const [key, setKey] = useState(''),
     [hasKey, setHasKey] = useState(false),
@@ -221,7 +221,7 @@ export function Settings(p: PageProps) {
       if (!mounted.current || authUserId.current !== userId) return;
       p.update((s) => Object.assign(s, remote.state));
       setModel(remote.state.model);
-      markAutoSyncResolved(remote.state, remote.revision);
+      markAutoSyncResolved(remote.state, remote.revision, 'download');
       setRemoteState(remote);
       setRemoteChecked(true);
       remoteLoadedFor.current = userId;
@@ -253,7 +253,7 @@ export function Settings(p: PageProps) {
       });
       setRemoteChecked(true);
       remoteLoadedFor.current = userId;
-      markAutoSyncResolved(p.state, newRevision);
+      markAutoSyncResolved(p.state, newRevision, 'upload');
       setRemoteMessage(`Datos locales subidos. Revisión remota ${newRevision}.`);
     } catch (e) {
       if (!mounted.current || authUserId.current !== userId) return;
@@ -370,26 +370,39 @@ export function Settings(p: PageProps) {
           </div>
         </section>
       )}
-      {authSession && (
-        <section className="panel settings-card">
+        <section className="panel settings-card remote-sync-settings">
           <span className="habit-icon gold">
             <Cloud size={22} />
           </span>
           <div>
             <div className="section-title">
               <h2>Sincronización remota</h2>
-              <Badge className="green">AUTOMÁTICA</Badge>
+              <Badge>AUTOMÁTICA</Badge>
             </div>
+            <p className={'save-indicator settings-sync-status ' + p.autoSync.status} role="status" aria-live="polite">
+              <Cloud size={16} />
+              <span>Estado actual: {p.autoSync.message || 'Sincronización inactiva'}</span>
+            </p>
             <p>
               Los cambios se sincronizan automáticamente cuando hay una sesión activa. Puedes usar
               los botones para forzar una descarga o resolver un conflicto; el guardado local continúa activo.
             </p>
+            <button
+              type="button"
+              className="secondary remote-refresh"
+              title="Consultar copia remota"
+              aria-label="Consultar copia remota"
+              disabled={!authSession || remoteBusy || remoteLoading}
+              onClick={() => authSession && void refreshRemote(authSession.user.id)}
+            >
+              <RefreshCw size={16} /> Consultar copia remota
+            </button>
             {remoteLoading ? (
               <p aria-live="polite">Consultando tu copia remota...</p>
             ) : remoteChecked && remoteState ? (
               <>
                 <p aria-live="polite">
-                  Última actualización: {new Date(remoteState.updatedAt).toLocaleString('es-ES')} ·
+                  Última actualización remota: {new Date(remoteState.updatedAt).toLocaleString('es-ES')} ·
                   Revisión {remoteState.revision}
                 </p>
                 <div className="button-row">
@@ -434,19 +447,10 @@ export function Settings(p: PageProps) {
                 <p className="error-message" role="alert">
                   {remoteError}
                 </p>
-                <button
-                  type="button"
-                  className="text-button"
-                  disabled={remoteBusy || remoteLoading}
-                  onClick={() => void refreshRemote(authSession.user.id)}
-                >
-                  <RefreshCw size={14} /> Volver a consultar
-                </button>
               </div>
             )}
           </div>
         </section>
-      )}
       <section className="panel settings-card">
         <span className="habit-icon physical">
           <Smartphone size={22} />

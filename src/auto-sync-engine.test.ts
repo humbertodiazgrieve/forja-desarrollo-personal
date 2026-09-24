@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { initialState, type AppState } from './domain';
 import { AutoSyncEngine, checkpointKey } from './auto-sync-engine';
 import { RemoteConflictError, type RemoteState } from './supabase-repository';
@@ -23,8 +23,107 @@ const flush = async () => {
   for (let i = 0; i < 8; i++) await Promise.resolve();
 };
 
+function makeFakeCas(initial: RemoteState | null = null) {
+  let row = initial;
+  return {
+    load: vi.fn(async () => row),
+    save: vi.fn(async (state: AppState, expectedRevision: number) => {
+      const revision = row?.revision ?? 0;
+      if (revision !== expectedRevision) throw new RemoteConflictError();
+      row = makeRemote(state, revision + 1);
+      return row.revision;
+    }),
+    read: () => row,
+  };
+}
+
 describe('AutoSyncEngine', () => {
   beforeEach(() => vi.useRealTimers());
+  afterEach(() => {
+    vi.clearAllTimers();
+    vi.useRealTimers();
+  });
+
+  it('converges two clients through shared CAS revisions and adopts newer data after checkpoint reload', async () => {
+    const baseline = { ...initialState('2026-09-14'), onboarded: true };
+    const server = makeFakeCas();
+    const clientA = new AutoSyncEngine({
+      loadRemote: server.load,
+      saveRemote: server.save,
+      applyRemote: vi.fn(),
+      onStatus: vi.fn(),
+    });
+    const storageB = makeStorage();
+    const applyB = vi.fn();
+    const clientB = new AutoSyncEngine({
+      loadRemote: server.load,
+      saveRemote: server.save,
+      applyRemote: applyB,
+      onStatus: vi.fn(),
+      storage: storageB,
+    });
+
+    clientA.setLocalState(baseline);
+    clientA.setUser('shared-user');
+    await flush();
+    expect(server.read()).toEqual(makeRemote(baseline, 1));
+
+    clientB.setLocalState(initialState('2026-09-14'));
+    clientB.setUser('shared-user');
+    await flush();
+    expect(applyB).toHaveBeenCalledWith(baseline);
+    expect(storageB.values.has(checkpointKey('shared-user'))).toBe(true);
+
+    const applyAfterReload = vi.fn();
+    const reloadedB = new AutoSyncEngine({
+      loadRemote: server.load,
+      saveRemote: server.save,
+      applyRemote: applyAfterReload,
+      onStatus: vi.fn(),
+      storage: storageB,
+    });
+    reloadedB.setLocalState(baseline);
+    reloadedB.setUser('shared-user');
+    await flush();
+
+    const updated = { ...baseline, records: { '2026-09-20': { cardio: 1 } } };
+    clientA.setLocalState(updated);
+    clientA.refresh();
+    await flush();
+    expect(server.read()).toEqual(makeRemote(updated, 2));
+
+    reloadedB.refresh();
+    await flush();
+    expect(applyAfterReload).toHaveBeenCalledWith(updated);
+    expect(JSON.stringify(applyAfterReload.mock.calls.at(-1)?.[0])).toBe(
+      JSON.stringify(server.read()?.state),
+    );
+    clientA.stop();
+    clientB.stop();
+    reloadedB.stop();
+  });
+
+  it('marks local edits syncing immediately throughout the debounce window', async () => {
+    const baseline = { ...initialState('2026-09-14'), onboarded: true };
+    const server = makeFakeCas(makeRemote(baseline, 1));
+    const onStatus = vi.fn();
+    const engine = new AutoSyncEngine({
+      loadRemote: server.load,
+      saveRemote: server.save,
+      applyRemote: vi.fn(),
+      onStatus,
+    });
+    engine.setLocalState(baseline);
+    engine.setUser('account');
+    await flush();
+
+    vi.useFakeTimers();
+    engine.setLocalState({ ...baseline, records: { '2026-09-20': { cardio: 1 } } });
+    expect(onStatus).toHaveBeenLastCalledWith('syncing', 1);
+    await vi.advanceTimersByTimeAsync(1199);
+    expect(onStatus).toHaveBeenLastCalledWith('syncing', 1);
+    engine.stop();
+  });
 
   it('persists a per-user checkpoint and adopts newer remote data after reload', async () => {
     const storage = makeStorage();
@@ -320,31 +419,176 @@ describe('AutoSyncEngine', () => {
     expect(saveRemote).not.toHaveBeenCalled();
   });
 
-  it('acknowledges a sent snapshot without applying over a newer local edit', async () => {
+  it('keeps syncing after acknowledging an older snapshot and uploads the newer local state', async () => {
     const baseline = { ...initialState('2026-09-14'), onboarded: true };
     const sent = { ...baseline, model: 'sent snapshot' };
     const latest = { ...baseline, model: 'newer local edit' };
-    let finishSave!: (revision: number) => void;
+    const server = makeFakeCas(makeRemote(baseline, 1));
+    const onStatus = vi.fn();
+    let finishFirstSave!: () => void;
+    let saveCount = 0;
+    const saveRemote = vi.fn((state: AppState, expectedRevision: number) => {
+      if (saveCount++ > 0) return server.save(state, expectedRevision);
+      return new Promise<number>((resolve) => {
+        finishFirstSave = () => void server.save(state, expectedRevision).then(resolve);
+      });
+    });
     const applyRemote = vi.fn();
     const engine = new AutoSyncEngine({
-      loadRemote: vi.fn().mockResolvedValue(makeRemote(baseline, 1)),
-      saveRemote: vi.fn<
-        (state: AppState, expectedRevision: number) => Promise<number>
-      >(() => new Promise<number>((resolve) => (finishSave = resolve))),
+      loadRemote: server.load,
+      saveRemote,
       applyRemote,
-      onStatus: vi.fn(),
+      onStatus,
       storage: makeStorage(),
     });
     engine.setLocalState(baseline);
     engine.setUser('account');
     await flush();
+
+    vi.useFakeTimers();
     engine.setLocalState(sent);
     engine.refresh();
     await flush();
     engine.setLocalState(latest);
-    finishSave(2);
+    expect(onStatus).toHaveBeenLastCalledWith('syncing', 1);
+    finishFirstSave();
     await flush();
 
     expect(applyRemote).not.toHaveBeenCalled();
+    expect(server.read()).toEqual(makeRemote(sent, 2));
+    expect(onStatus).toHaveBeenLastCalledWith('syncing', 2);
+
+    await vi.advanceTimersByTimeAsync(1200);
+    await flush();
+    expect(server.read()).toEqual(makeRemote(latest, 3));
+    expect(onStatus).toHaveBeenLastCalledWith('synced', 3);
+    engine.stop();
+  });
+
+  it('rechecks and converges after an in-flight write completes after download resolution', async () => {
+    const baseline = { ...initialState('2026-09-14'), onboarded: true };
+    const sentBeforeDownload = { ...baseline, records: { '2026-09-20': { strength: 1 } } };
+    const server = makeFakeCas(makeRemote(baseline, 1));
+    let finishWrite!: () => void;
+    const saveRemote = vi.fn((_state: AppState, expectedRevision: number) =>
+      new Promise<number>((resolve) => {
+        finishWrite = () =>
+          void server.save(sentBeforeDownload, expectedRevision).then(resolve);
+      }),
+    );
+    const applyRemote = vi.fn();
+    const onStatus = vi.fn();
+    const engine = new AutoSyncEngine({
+      loadRemote: server.load,
+      saveRemote,
+      applyRemote,
+      onStatus,
+      storage: makeStorage(),
+    });
+    engine.setLocalState(baseline);
+    engine.setUser('account');
+    await flush();
+    engine.setLocalState(sentBeforeDownload);
+    engine.refresh();
+    await flush();
+
+    engine.resolve(baseline, 1, 'download');
+    expect(onStatus).toHaveBeenLastCalledWith('syncing', 1);
+    finishWrite();
+    await flush();
+
+    expect(server.read()).toEqual(makeRemote(sentBeforeDownload, 2));
+    expect(applyRemote).toHaveBeenCalledWith(sentBeforeDownload);
+    expect(JSON.stringify(applyRemote.mock.calls.at(-1)?.[0])).toBe(
+      JSON.stringify(server.read()?.state),
+    );
+    expect(onStatus).toHaveBeenLastCalledWith('synced', 2);
+    engine.stop();
+  });
+
+  it('does not repost stale React state after a download resolution', async () => {
+    const staleLocal = { ...initialState('2026-09-14'), onboarded: true };
+    const downloaded = {
+      ...initialState('2026-09-14'),
+      records: { '2026-09-20': { cardio: 1 } },
+    };
+    const server = makeFakeCas(makeRemote(downloaded, 4));
+    const saveRemote = vi.fn(server.save);
+    const engine = new AutoSyncEngine({
+      loadRemote: server.load,
+      saveRemote,
+      applyRemote: vi.fn(),
+      onStatus: vi.fn(),
+    });
+    engine.setLocalState(staleLocal);
+    engine.setUser('account');
+    await flush();
+
+    engine.resolve(downloaded, 4, 'download');
+    await flush();
+
+    expect(saveRemote).not.toHaveBeenCalled();
+    expect(server.read()).toEqual(makeRemote(downloaded, 4));
+    engine.stop();
+  });
+
+  it('preserves edits newer than an upload-resolution snapshot', async () => {
+    const baseline = { ...initialState('2026-09-14'), onboarded: true };
+    const uploaded = { ...baseline, model: 'uploaded snapshot' };
+    const newest = { ...baseline, model: 'edit made during upload' };
+    const server = makeFakeCas(makeRemote(uploaded, 2));
+    const engine = new AutoSyncEngine({
+      loadRemote: server.load,
+      saveRemote: server.save,
+      applyRemote: vi.fn(),
+      onStatus: vi.fn(),
+    });
+    engine.setLocalState(newest);
+    engine.setUser('account');
+    await flush();
+
+    engine.resolve(uploaded, 2, 'upload');
+    await flush();
+
+    expect(server.read()).toEqual(makeRemote(newest, 3));
+    engine.stop();
+  });
+
+  it('keeps a post-download edit and reports conflict with an older in-flight write', async () => {
+    const baseline = { ...initialState('2026-09-14'), onboarded: true };
+    const sentBeforeDownload = { ...baseline, records: { '2026-09-20': { strength: 1 } } };
+    const newerLocalEdit = { ...baseline, model: 'edit after download selection' };
+    const server = makeFakeCas(makeRemote(baseline, 1));
+    let finishWrite!: () => void;
+    const saveRemote = vi.fn((_state: AppState, expectedRevision: number) =>
+      new Promise<number>((resolve) => {
+        finishWrite = () =>
+          void server.save(sentBeforeDownload, expectedRevision).then(resolve);
+      }),
+    );
+    const applyRemote = vi.fn();
+    const onStatus = vi.fn();
+    const engine = new AutoSyncEngine({
+      loadRemote: server.load,
+      saveRemote,
+      applyRemote,
+      onStatus,
+    });
+    engine.setLocalState(baseline);
+    engine.setUser('account');
+    await flush();
+    engine.setLocalState(sentBeforeDownload);
+    engine.refresh();
+    await flush();
+
+    engine.resolve(baseline, 1, 'download');
+    engine.setLocalState(newerLocalEdit);
+    finishWrite();
+    await flush();
+
+    expect(server.read()).toEqual(makeRemote(sentBeforeDownload, 2));
+    expect(applyRemote).not.toHaveBeenCalled();
+    expect(onStatus).toHaveBeenLastCalledWith('conflict', 2);
+    engine.stop();
   });
 });

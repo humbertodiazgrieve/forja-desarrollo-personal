@@ -296,14 +296,15 @@ strong {
   flex-direction: column;
 }
 .topbar {
-  height: 69px;
+  min-height: 69px;
   flex-shrink: 0;
   border-bottom: 1px solid var(--line);
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 0 36px;
+  padding: 12px 36px;
   gap: 12px;
+  flex-wrap: wrap;
   background: #131815;
 }
 .breadcrumb {
@@ -318,18 +319,40 @@ strong {
 }
 .topbar-right {
   display: flex;
+  min-width: 0;
+  flex-wrap: wrap;
   gap: 18px;
   align-items: center;
 }
+.save-statuses {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 16px;
+  min-width: 0;
+}
 .save-indicator {
-  font-size: 9px;
+  font-size: 11px;
   color: #83977f;
   display: flex;
   align-items: center;
   gap: 5px;
+  min-width: 0;
+  overflow-wrap: anywhere;
 }
-.save-indicator.error {
+.save-indicator svg {
+  flex-shrink: 0;
+}
+.save-indicator.error,
+.save-indicator.conflict {
   color: #e7a080;
+}
+.save-indicator.checking,
+.save-indicator.syncing {
+  color: var(--gold);
+}
+.save-indicator.disabled {
+  color: var(--muted);
 }
 .date-control {
   display: flex;
@@ -2236,6 +2259,24 @@ td:last-child {
 .toast > span {
   min-width: 150px;
 }
+.settings-card .section-title {
+  flex-wrap: wrap;
+}
+.settings-card button {
+  max-width: 100%;
+}
+.settings-card button svg {
+  flex-shrink: 0;
+}
+.settings-card p {
+  overflow-wrap: anywhere;
+}
+.settings-card .settings-sync-status {
+  font-size: 13px;
+}
+.remote-refresh {
+  margin-bottom: 16px;
+}
 .toast.xp-toast {
   background: #303d2b;
   border-color: #c5d98a8a;
@@ -2426,7 +2467,7 @@ dialog::backdrop {
     padding: 28px 25px 0;
   }
   .topbar {
-    padding: 0 25px;
+    padding: 12px 25px;
   }
   .hero-copy {
     padding: 23px;
@@ -2532,12 +2573,13 @@ dialog::backdrop {
   }
   .topbar-right {
     gap: 8px;
+    width: 100%;
   }
-  .save-indicator {
-    display: none;
+  .save-statuses {
+    flex-basis: 100%;
   }
   .topbar {
-    padding: 0 20px;
+    padding: 12px 20px;
   }
   main {
     padding: 25px 20px 0;
@@ -2699,11 +2741,11 @@ dialog::backdrop {
     display: none;
   }
   .topbar {
-    justify-content: flex-end;
-    height: 57px;
+    padding: 12px;
+    min-height: 57px;
   }
   .topbar-right {
-    gap: 10px;
+    gap: 8px;
   }
   .user-monogram {
     display: none;

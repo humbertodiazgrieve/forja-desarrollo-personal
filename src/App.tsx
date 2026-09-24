@@ -217,7 +217,7 @@ export default function App() {
     ) : page === 'review' ? (
       <Review {...props} />
     ) : page === 'settings' ? (
-      <Settings {...props} />
+      <Settings {...props} autoSync={autoSync} />
     ) : (
       <>
         <Heading
@@ -282,7 +282,7 @@ export default function App() {
               <span style={{ width: (xp % 100) + '%' }} />
             </div>
           </div>
-          <button className={page === 'settings' ? 'active' : ''} onClick={() => go('settings')}>
+          <button aria-label="Ajustes" className={page === 'settings' ? 'active' : ''} onClick={() => go('settings')}>
             <SettingsIcon size={18} />
             <span>Ajustes</span>
           </button>
@@ -301,25 +301,26 @@ export default function App() {
             </span>
           </div>
           <div className="topbar-right">
-            <span className={'save-indicator ' + saveStatus} aria-live="polite">
-              {saveStatus === 'saved' ? (
-                <Check size={12} />
-              ) : saveStatus === 'error' ? (
-                <AlertCircle size={12} />
-              ) : (
-                <LoaderCircle size={12} className="spin" />
-              )}
-              {saveStatus === 'saved'
-                ? 'Guardado local'
-                : saveStatus === 'error'
-                  ? 'Error al guardar'
-                : 'Guardando'}
-            </span>
-            {autoSync.status !== 'disabled' && (
-              <span className={'save-indicator ' + autoSync.status} aria-live="polite">
-                <Cloud size={12} /> {autoSync.message}
+            <div className="save-statuses">
+              <span className={'save-indicator local-save-status ' + saveStatus} aria-live="polite">
+                {saveStatus === 'saved' ? (
+                  <Check size={12} />
+                ) : saveStatus === 'error' ? (
+                  <AlertCircle size={12} />
+                ) : (
+                  <LoaderCircle size={12} className="spin" />
+                )}
+                {saveStatus === 'saved'
+                  ? 'Guardado local'
+                  : saveStatus === 'error'
+                    ? 'Error al guardar'
+                    : 'Guardando'}
               </span>
-            )}
+              <span className={'save-indicator remote-save-status ' + autoSync.status} aria-live="polite">
+                <Cloud size={14} />
+                <span>Remoto: {autoSync.message || 'Sincronización inactiva'}</span>
+              </span>
+            </div>
             <div className="date-control">
               <button
                 className="icon-button"

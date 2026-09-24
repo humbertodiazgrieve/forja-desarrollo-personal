@@ -60,8 +60,10 @@ export class AutoSyncEngine {
     this.latest = state;
     if (state && this.userId && !this.initialized && !this.conflicted && !this.running)
       this.requestRun(false);
-    else if (state && this.initialized && !this.conflicted && serialize(state) !== this.baseline)
+    else if (state && this.initialized && !this.conflicted && serialize(state) !== this.baseline) {
+      this.dependencies.onStatus('syncing', this.revision);
       this.requestRun(true);
+    }
   }
 
   setUser(userId: string | null) {
@@ -82,17 +84,20 @@ export class AutoSyncEngine {
     if (this.userId && this.latest && !this.conflicted) this.requestRun(false);
   }
 
-  resolve(state: AppState, revision: number) {
+  resolve(state: AppState, revision: number, source: 'download' | 'upload' = 'upload') {
     if (!this.userId) return;
     this.generation++;
     this.clearTimer();
     this.conflicted = false;
     this.conflictNotified = false;
+    if (source === 'download') this.latest = state;
     this.baseline = serialize(state);
     this.revision = revision;
     this.initialized = true;
     this.persistCheckpoint(state, revision);
-    this.dependencies.onStatus('synced', revision);
+    this.dependencies.onStatus('syncing', revision);
+    if (this.running) this.rerunAfterCurrent = true;
+    else if (this.latest) this.requestRun(false);
   }
 
   stop() {
@@ -129,6 +134,7 @@ export class AutoSyncEngine {
       this.running = null;
       if (this.rerunAfterCurrent) {
         this.rerunAfterCurrent = false;
+        this.clearTimer();
         void this.run();
       }
     });
@@ -218,7 +224,6 @@ export class AutoSyncEngine {
       const savedRevision = await this.dependencies.saveRemote(current, expectedRevision);
       if (!this.isCurrent(userId, generation)) return;
       this.acknowledge(current, savedRevision);
-      if (this.latest && serialize(this.latest) !== this.baseline) this.requestRun(true);
     } catch (error) {
       if (!this.isCurrent(userId, generation)) return;
       if (error instanceof RemoteConflictError) {
@@ -252,7 +257,10 @@ export class AutoSyncEngine {
     this.revision = revision;
     this.initialized = true;
     this.persistCheckpoint(state, revision);
-    this.dependencies.onStatus('synced', revision);
+    if (this.latest && serialize(this.latest) !== this.baseline) {
+      this.dependencies.onStatus('syncing', revision);
+      this.requestRun(true);
+    } else this.dependencies.onStatus('synced', revision);
   }
 
   private raiseConflict(remote: RemoteState, message: string) {
