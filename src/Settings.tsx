@@ -366,7 +366,7 @@ export function Settings(p: PageProps) {
           <div>
             <div className="section-title">
               <h2>Sincronización remota</h2>
-              <Badge className="green">MANUAL</Badge>
+              <Badge className="green">AUTOMÁTICA</Badge>
             </div>
             <p>
               Los cambios se sincronizan automáticamente cuando hay una sesión activa. Puedes usar
