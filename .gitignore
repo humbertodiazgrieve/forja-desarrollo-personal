@@ -8,3 +8,6 @@ playwright-report/
 .env
 .env.*
 !.env.example
+.graphify-venv/
+graphify-out/
+.graphify/
