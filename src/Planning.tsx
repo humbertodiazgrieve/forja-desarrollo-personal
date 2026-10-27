@@ -10,6 +10,7 @@ import {
   localDate,
   missionsAt,
   monthPeriods,
+  updateGoal,
   uid,
   type Goal,
   type Habit,
@@ -93,11 +94,12 @@ export function Planning(p: PageProps) {
             <div className="section-title">
               <h3>{g.name}</h3>
               <button
-                className="icon-button"
+                className="text-button"
                 aria-label={'Editar ' + g.name}
                 onClick={() => setGoal({ ...g })}
               >
                 <Pencil size={16} />
+                Editar
               </button>
             </div>
             <div className="goal-journey">
@@ -329,13 +331,27 @@ export function Planning(p: PageProps) {
           <form
             onSubmit={(e) => {
               e.preventDefault();
+              const name = goal.name.trim();
+              if (!name) {
+                p.notify('El nombre de la meta es obligatorio.');
+                return;
+              }
               p.update((s) => {
-                s.goals = s.goals.map((g) => (g.id === goal.id ? goal : g));
+                Object.assign(s, updateGoal(s, { ...goal, name }));
               });
+              p.notify('Meta guardada. Su progreso e historial se mantienen.');
               setGoal(null);
             }}
           >
             <div className="form-grid">
+              <Field label="Nombre de la meta">
+                <input
+                  required
+                  type="text"
+                  value={goal.name}
+                  onChange={(e) => setGoal({ ...goal, name: e.target.value })}
+                />
+              </Field>
               <Field label={`Valor inicial (${goal.unit})`}>
                 <input
                   required
@@ -365,7 +381,14 @@ export function Planning(p: PageProps) {
                 onChange={(e) => setGoal({ ...goal, deadline: e.target.value })}
               />
             </Field>
-            <button className="primary full">Guardar meta</button>
+            <div className="modal-actions">
+              <button type="button" className="secondary" onClick={() => setGoal(null)}>
+                Cancelar
+              </button>
+              <button className="primary" type="submit">
+                Guardar meta
+              </button>
+            </div>
           </form>
         </Modal>
       )}

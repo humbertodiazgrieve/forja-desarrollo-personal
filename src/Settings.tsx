@@ -23,6 +23,7 @@ import {
   getCurrentSession,
   isSupabaseAuthConfigured,
   requestMagicLink,
+  verifyEmailCode,
   signOut,
   subscribeToAuthChanges,
 } from './supabase-auth';
@@ -54,6 +55,9 @@ export function Settings(p: PageProps & { autoSync: AutoSyncState }) {
     [authBusy, setAuthBusy] = useState(false),
     [authMessage, setAuthMessage] = useState(''),
     [authError, setAuthError] = useState(''),
+    [authCode, setAuthCode] = useState(''),
+    [authCodeRequested, setAuthCodeRequested] = useState(false),
+    [authCooldown, setAuthCooldown] = useState(0),
     [remoteState, setRemoteState] = useState<RemoteState | null>(null),
     [remoteChecked, setRemoteChecked] = useState(false),
     [remoteLoading, setRemoteLoading] = useState(false),
@@ -116,6 +120,14 @@ export function Settings(p: PageProps & { autoSync: AutoSyncState }) {
     };
   }, [authConfigured]);
   useEffect(() => {
+    if (authCooldown <= 0) return;
+    const timer = window.setInterval(
+      () => setAuthCooldown((value) => Math.max(0, value - 1)),
+      1000,
+    );
+    return () => window.clearInterval(timer);
+  }, [authCooldown]);
+  useEffect(() => {
     if (desktop) return;
     return subscribeToPwaInstallChanges(setPwaState);
   }, []);
@@ -169,6 +181,7 @@ export function Settings(p: PageProps & { autoSync: AutoSyncState }) {
   };
   const sendMagicLink = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
+    if (authBusy || authCodeRequested) return;
     const email = authEmail.trim();
     setAuthEmail(email);
     setAuthMessage('');
@@ -180,13 +193,70 @@ export function Settings(p: PageProps & { autoSync: AutoSyncState }) {
     setAuthBusy(true);
     try {
       await requestMagicLink(email);
-      if (mounted.current)
-        setAuthMessage('Te enviamos un enlace mágico. Revisa tu correo para continuar.');
+      if (mounted.current) {
+        setAuthCodeRequested(true);
+        setAuthCode('');
+        setAuthCooldown(60);
+        setAuthMessage(
+          'Revisa tu correo y vuelve aquí para introducir el código. Si el mensaje solo incluye un enlace, puedes usarlo en el navegador.',
+        );
+      }
     } catch (e) {
       if (mounted.current) setAuthError(`No se pudo enviar el enlace. ${String(e)}`);
     } finally {
       if (mounted.current) setAuthBusy(false);
     }
+  };
+  const verifyCode = async (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (authBusy) return;
+    setAuthMessage('');
+    setAuthError('');
+    setAuthBusy(true);
+    try {
+      const session = await verifyEmailCode(authEmail, authCode);
+      if (mounted.current) {
+        setAuthSession(session);
+        setAuthCodeRequested(false);
+        setAuthCode('');
+        setAuthMessage('Código verificado. Tu sesión está activa.');
+      }
+    } catch (e) {
+      if (mounted.current) setAuthError(`Código inválido o caducado. ${String(e)}`);
+    } finally {
+      if (mounted.current) setAuthBusy(false);
+    }
+  };
+  const resendMagicLink = async () => {
+    if (authBusy || authCooldown > 0) return;
+    const email = authEmail.trim();
+    if (!email) {
+      setAuthError('Escribe un email para reenviar el enlace.');
+      return;
+    }
+    setAuthBusy(true);
+    setAuthMessage('');
+    setAuthError('');
+    try {
+      await requestMagicLink(email);
+      if (mounted.current) {
+        setAuthCooldown(60);
+        setAuthMessage(
+          'Solicitamos un correo nuevo. Usa el enlace o el código del mensaje más reciente.',
+        );
+      }
+    } catch (e) {
+      if (mounted.current) setAuthError(`No se pudo reenviar el correo. ${String(e)}`);
+    } finally {
+      if (mounted.current) setAuthBusy(false);
+    }
+  };
+  const changeAuthEmail = () => {
+    setAuthCodeRequested(false);
+    setAuthCode('');
+    setAuthCooldown(0);
+    setAuthMessage('');
+    setAuthError('');
   };
   const closeSession = async () => {
     setAuthBusy(true);
@@ -317,15 +387,16 @@ export function Settings(p: PageProps & { autoSync: AutoSyncState }) {
               <Badge className="green">CUENTA SUPABASE</Badge>
             </div>
             <p>
-              Puedes usar un enlace mágico para reconocer tu cuenta. Tus datos siguen guardándose
-              localmente mientras la sincronización remota no esté activa.
+              Puedes usar un enlace mágico o un código de un solo uso para reconocer tu cuenta. Tus
+              datos siguen guardándose localmente mientras la sincronización remota no esté activa.
             </p>
             {authLoading ? (
               <p aria-live="polite">Comprobando tu sesión...</p>
             ) : authSession ? (
               <div className="button-row">
                 <p>
-                  Sesión iniciada como <strong>{authSession.user.email ?? 'usuario autenticado'}</strong>.
+                  Sesión iniciada como{' '}
+                  <strong>{authSession.user.email ?? 'usuario autenticado'}</strong>.
                 </p>
                 <button
                   type="button"
@@ -337,25 +408,75 @@ export function Settings(p: PageProps & { autoSync: AutoSyncState }) {
                 </button>
               </div>
             ) : (
-              <form onSubmit={sendMagicLink}>
-                <Field
-                  label="Email"
-                  hint="Recibirás un enlace para continuar sin guardar contraseñas en Forja."
-                >
-                  <input
-                    id="supabase-email"
-                    type="email"
-                    autoComplete="email"
-                    value={authEmail}
-                    disabled={authBusy}
-                    onChange={(e) => setAuthEmail(e.target.value)}
-                    placeholder="tu@email.com"
-                  />
-                </Field>
-                <button className="secondary" type="submit" disabled={authBusy}>
-                  <Mail size={16} /> {authBusy ? 'Enviando enlace...' : 'Enviar enlace mágico'}
-                </button>
-              </form>
+              <>
+                <form onSubmit={sendMagicLink}>
+                  <Field
+                    label="Email"
+                    hint="Recibirás un enlace para continuar sin guardar contraseñas en Forja."
+                  >
+                    <input
+                      id="supabase-email"
+                      type="email"
+                      autoComplete="email"
+                      value={authEmail}
+                      disabled={authBusy || authCodeRequested}
+                      onChange={(e) => setAuthEmail(e.target.value)}
+                      placeholder="tu@email.com"
+                    />
+                  </Field>
+                  <button
+                    className="secondary"
+                    type="submit"
+                    disabled={authBusy || authCodeRequested}
+                  >
+                    <Mail size={16} /> {authBusy ? 'Enviando enlace...' : 'Enviar enlace mágico'}
+                  </button>
+                </form>
+                {authCodeRequested && (
+                  <form onSubmit={verifyCode}>
+                    <Field
+                      label="Código del correo"
+                      hint="Escribe el código numérico del correo más reciente."
+                    >
+                      <input
+                        id="supabase-email-code"
+                        inputMode="numeric"
+                        autoComplete="one-time-code"
+                        value={authCode}
+                        disabled={authBusy}
+                        onChange={(e) => setAuthCode(e.target.value)}
+                        placeholder="Código"
+                      />
+                    </Field>
+                    <div className="button-row">
+                      <button
+                        className="secondary"
+                        type="submit"
+                        disabled={authBusy || !authCode.trim()}
+                      >
+                        <KeyRound size={16} />{' '}
+                        {authBusy ? 'Verificando código...' : 'Verificar código'}
+                      </button>
+                      <button
+                        type="button"
+                        className="text-button"
+                        disabled={authBusy || authCooldown > 0}
+                        onClick={resendMagicLink}
+                      >
+                        {authCooldown > 0 ? `Reenviar en ${authCooldown}s` : 'Reenviar correo'}
+                      </button>
+                      <button
+                        type="button"
+                        className="text-button"
+                        disabled={authBusy}
+                        onClick={changeAuthEmail}
+                      >
+                        Cambiar email
+                      </button>
+                    </div>
+                  </form>
+                )}
+              </>
             )}
             {authMessage && (
               <p className="notice" role="status" aria-live="polite">
@@ -370,63 +491,56 @@ export function Settings(p: PageProps & { autoSync: AutoSyncState }) {
           </div>
         </section>
       )}
-        <section className="panel settings-card remote-sync-settings">
-          <span className="habit-icon gold">
-            <Cloud size={22} />
-          </span>
-          <div>
-            <div className="section-title">
-              <h2>Sincronización remota</h2>
-              <Badge>AUTOMÁTICA</Badge>
-            </div>
-            <p className={'save-indicator settings-sync-status ' + p.autoSync.status} role="status" aria-live="polite">
-              <Cloud size={16} />
-              <span>Estado actual: {p.autoSync.message || 'Sincronización inactiva'}</span>
-            </p>
-            <p>
-              Los cambios se sincronizan automáticamente cuando hay una sesión activa. Puedes usar
-              los botones para forzar una descarga o resolver un conflicto; el guardado local continúa activo.
-            </p>
-            <button
-              type="button"
-              className="secondary remote-refresh"
-              title="Consultar copia remota"
-              aria-label="Consultar copia remota"
-              disabled={!authSession || remoteBusy || remoteLoading}
-              onClick={() => authSession && void refreshRemote(authSession.user.id)}
-            >
-              <RefreshCw size={16} /> Consultar copia remota
-            </button>
-            {remoteLoading ? (
-              <p aria-live="polite">Consultando tu copia remota...</p>
-            ) : remoteChecked && remoteState ? (
-              <>
-                <p aria-live="polite">
-                  Última actualización remota: {new Date(remoteState.updatedAt).toLocaleString('es-ES')} ·
-                  Revisión {remoteState.revision}
-                </p>
-                <div className="button-row">
-                  <button
-                    type="button"
-                    className="secondary"
-                    disabled={remoteBusy}
-                    onClick={downloadRemote}
-                  >
-                    <CloudDownload size={16} /> Descargar datos remotos
-                  </button>
-                  <button
-                    type="button"
-                    className="secondary"
-                    disabled={remoteBusy}
-                    onClick={uploadLocal}
-                  >
-                    <CloudUpload size={16} /> Subir datos locales
-                  </button>
-                </div>
-              </>
-            ) : remoteChecked ? (
-              <>
-                <p aria-live="polite">Todavía no hay una copia remota de tus datos.</p>
+      <section className="panel settings-card remote-sync-settings">
+        <span className="habit-icon gold">
+          <Cloud size={22} />
+        </span>
+        <div>
+          <div className="section-title">
+            <h2>Sincronización remota</h2>
+            <Badge>AUTOMÁTICA</Badge>
+          </div>
+          <p
+            className={'save-indicator settings-sync-status ' + p.autoSync.status}
+            role="status"
+            aria-live="polite"
+          >
+            <Cloud size={16} />
+            <span>Estado actual: {p.autoSync.message || 'Sincronización inactiva'}</span>
+          </p>
+          <p>
+            Los cambios se sincronizan automáticamente cuando hay una sesión activa. Puedes usar los
+            botones para forzar una descarga o resolver un conflicto; el guardado local continúa
+            activo.
+          </p>
+          <button
+            type="button"
+            className="secondary remote-refresh"
+            title="Consultar copia remota"
+            aria-label="Consultar copia remota"
+            disabled={!authSession || remoteBusy || remoteLoading}
+            onClick={() => authSession && void refreshRemote(authSession.user.id)}
+          >
+            <RefreshCw size={16} /> Consultar copia remota
+          </button>
+          {remoteLoading ? (
+            <p aria-live="polite">Consultando tu copia remota...</p>
+          ) : remoteChecked && remoteState ? (
+            <>
+              <p aria-live="polite">
+                Última actualización remota:{' '}
+                {new Date(remoteState.updatedAt).toLocaleString('es-ES')} · Revisión{' '}
+                {remoteState.revision}
+              </p>
+              <div className="button-row">
+                <button
+                  type="button"
+                  className="secondary"
+                  disabled={remoteBusy}
+                  onClick={downloadRemote}
+                >
+                  <CloudDownload size={16} /> Descargar datos remotos
+                </button>
                 <button
                   type="button"
                   className="secondary"
@@ -435,22 +549,35 @@ export function Settings(p: PageProps & { autoSync: AutoSyncState }) {
                 >
                   <CloudUpload size={16} /> Subir datos locales
                 </button>
-              </>
-            ) : null}
-            {remoteMessage && (
-              <p className="notice" role="status" aria-live="polite">
-                {remoteMessage}
-              </p>
-            )}
-            {remoteError && (
-              <div>
-                <p className="error-message" role="alert">
-                  {remoteError}
-                </p>
               </div>
-            )}
-          </div>
-        </section>
+            </>
+          ) : remoteChecked ? (
+            <>
+              <p aria-live="polite">Todavía no hay una copia remota de tus datos.</p>
+              <button
+                type="button"
+                className="secondary"
+                disabled={remoteBusy}
+                onClick={uploadLocal}
+              >
+                <CloudUpload size={16} /> Subir datos locales
+              </button>
+            </>
+          ) : null}
+          {remoteMessage && (
+            <p className="notice" role="status" aria-live="polite">
+              {remoteMessage}
+            </p>
+          )}
+          {remoteError && (
+            <div>
+              <p className="error-message" role="alert">
+                {remoteError}
+              </p>
+            </div>
+          )}
+        </div>
+      </section>
       <section className="panel settings-card">
         <span className="habit-icon physical">
           <Smartphone size={22} />

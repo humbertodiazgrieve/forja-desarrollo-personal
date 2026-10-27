@@ -348,6 +348,18 @@ export function goalProgress(g: Goal, value: number) {
       : 0
     : Math.max(0, Math.min(100, ((value - g.start) / (g.target - g.start)) * 100));
 }
+export function updateGoal(s: AppState, edited: Goal): AppState {
+  const current = s.goals.find((g) => g.id === edited.id);
+  if (!current) throw Error('Meta no encontrada.');
+  const name = edited.name.trim();
+  if (!name) throw Error('El nombre de la meta es obligatorio.');
+  return {
+    ...s,
+    goals: s.goals.map((g) =>
+      g.id === current.id ? { ...g, ...edited, id: current.id, name } : g,
+    ),
+  };
+}
 export function addVersion(s: AppState, h: Habit, from: string, to?: string): AppState {
   return {
     ...s,

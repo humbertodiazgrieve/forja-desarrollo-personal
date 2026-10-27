@@ -23,8 +23,7 @@ function defaultRedirectTo(): string | undefined {
 }
 
 export async function requestMagicLink(email: string, redirectTo?: string): Promise<void> {
-  const normalizedEmail = email.trim();
-  if (!normalizedEmail) throw new Error('El email es obligatorio.');
+  const normalizedEmail = normalizeEmail(email);
 
   const client = requireClient();
   const emailRedirectTo = redirectTo?.trim() || defaultRedirectTo();
@@ -34,6 +33,33 @@ export async function requestMagicLink(email: string, redirectTo?: string): Prom
     ...(options ? { options } : {}),
   });
   if (error) throw error;
+}
+
+export function normalizeEmail(email: string): string {
+  const normalizedEmail = email.trim();
+  if (!normalizedEmail) throw new Error('El email es obligatorio.');
+  return normalizedEmail;
+}
+
+export function normalizeEmailOtpToken(token: string): string {
+  const normalizedToken = token.trim();
+  if (!normalizedToken) throw new Error('El código es obligatorio.');
+  if (!/^\d+$/.test(normalizedToken)) throw new Error('El código debe contener solo números.');
+  return normalizedToken;
+}
+
+export async function verifyEmailCode(email: string, token: string): Promise<Session> {
+  const normalizedEmail = normalizeEmail(email);
+  const normalizedToken = normalizeEmailOtpToken(token);
+  const { data, error } = await requireClient().auth.verifyOtp({
+    email: normalizedEmail,
+    token: normalizedToken,
+    type: 'email',
+  });
+  if (error) throw error;
+  if (!data.session) throw new Error('Supabase no devolvió una sesión para este código.');
+  cachedSession = data.session;
+  return data.session;
 }
 
 export async function getCurrentSession(): Promise<Session | null> {

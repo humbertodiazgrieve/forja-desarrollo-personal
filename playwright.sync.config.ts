@@ -2,7 +2,7 @@ import { defineConfig } from '@playwright/test';
 
 export default defineConfig({
   testDir: './e2e',
-  testMatch: 'sync-responsive.pw.ts',
+  testMatch: /(?:sync-responsive|auth-code)\.pw\.ts/,
   outputDir: 'test-results/sync-responsive',
   workers: 1,
   reporter: 'list',
@@ -14,7 +14,8 @@ export default defineConfig({
     timezoneId: 'America/Lima',
   },
   webServer: {
-    command: 'node node_modules/vite/bin/vite.js --host 127.0.0.1 --port 1421 --strictPort --configLoader runner',
+    command:
+      'node node_modules/vite/bin/vite.js --host 127.0.0.1 --port 1421 --strictPort --configLoader runner',
     url: 'http://127.0.0.1:1421',
     reuseExistingServer: false,
     env: {

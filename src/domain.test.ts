@@ -15,6 +15,7 @@ import {
   streak,
   totalXp,
   undoReview,
+  updateGoal,
   validateState,
 } from './domain';
 const monday = '2026-09-14';
@@ -188,5 +189,18 @@ describe('Revisión y copias', () => {
     const reading = habitsAt(s, monday).find((h) => h.id === 'reading')!;
     s = addVersion(s, { ...reading, target: 30 }, '2026-09-21');
     expect(totalXp(s, '2026-09-22')).toBe(10);
+  });
+  it('renombra una meta sin perder id, progreso, hitos ni hábitos vinculados', () => {
+    const s = initialState(monday);
+    const goal = s.goals[0];
+    s.measurements = [{ id: 'measurement', date: monday, goalId: goal.id, value: 86 }];
+    s.milestones['2026-09-14-0'] = { [goal.id]: 87 };
+
+    const updated = updateGoal(s, { ...goal, name: '  Composición corporal  ' });
+
+    expect(updated.goals[0]).toEqual({ ...goal, name: 'Composición corporal' });
+    expect(updated.measurements).toEqual(s.measurements);
+    expect(updated.milestones).toEqual(s.milestones);
+    expect(() => updateGoal(s, { ...goal, name: '   ' })).toThrow('nombre');
   });
 });

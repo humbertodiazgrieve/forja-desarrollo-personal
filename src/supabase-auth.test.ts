@@ -4,6 +4,7 @@ import type { AuthChangeEvent, Session } from '@supabase/supabase-js';
 const mocks = vi.hoisted(() => {
   const auth = {
     signInWithOtp: vi.fn(),
+    verifyOtp: vi.fn(),
     getSession: vi.fn(),
     signOut: vi.fn(),
     onAuthStateChange: vi.fn(),
@@ -43,6 +44,7 @@ beforeEach(() => {
   mocks.configured = true;
   mocks.auth.getSession.mockResolvedValue({ data: { session }, error: null });
   mocks.auth.signInWithOtp.mockResolvedValue({ data: {}, error: null });
+  mocks.auth.verifyOtp.mockResolvedValue({ data: { session }, error: null });
   mocks.auth.signOut.mockResolvedValue({ error: null });
   mocks.auth.onAuthStateChange.mockReturnValue({
     data: { subscription: { unsubscribe: vi.fn() } },
@@ -75,6 +77,42 @@ describe('Supabase auth service', () => {
       email: 'warrior@example.test',
       options: { emailRedirectTo: 'https://app.example.test/auth' },
     });
+  });
+
+  it('validates email and token locally before verifying an OTP', async () => {
+    const auth = await loadAuth();
+
+    await expect(auth.verifyEmailCode('   ', '123456')).rejects.toThrow('El email es obligatorio');
+    await expect(auth.verifyEmailCode('warrior@example.test', '   ')).rejects.toThrow(
+      'El código es obligatorio',
+    );
+    await expect(auth.verifyEmailCode('warrior@example.test', '12ab34')).rejects.toThrow(
+      'solo números',
+    );
+    expect(mocks.auth.verifyOtp).not.toHaveBeenCalled();
+  });
+
+  it('verifies a normalized email OTP and caches the returned session', async () => {
+    const auth = await loadAuth();
+
+    await expect(auth.verifyEmailCode(' warrior@example.test ', ' 12345678 ')).resolves.toEqual(
+      session,
+    );
+    expect(mocks.auth.verifyOtp).toHaveBeenCalledWith({
+      email: 'warrior@example.test',
+      token: '12345678',
+      type: 'email',
+    });
+    await expect(auth.getCurrentSession()).resolves.toEqual(session);
+    expect(mocks.auth.getSession).not.toHaveBeenCalled();
+  });
+
+  it('rejects a successful OTP response that has no session', async () => {
+    mocks.auth.verifyOtp.mockResolvedValue({ data: { session: null }, error: null });
+    const auth = await loadAuth();
+    await expect(auth.verifyEmailCode('warrior@example.test', '123456')).rejects.toThrow(
+      'no devolvió una sesión',
+    );
   });
 
   it('uses the current origin when available and omits redirect in non-browser runtimes', async () => {
@@ -143,8 +181,22 @@ describe('Supabase auth service', () => {
   });
 
   it.each([
-    ['requestMagicLink', () => mocks.auth.signInWithOtp.mockResolvedValue({ error: new Error('otp failed') })],
-    ['getCurrentSession', () => mocks.auth.getSession.mockRejectedValue(new Error('session failed'))],
+    [
+      'requestMagicLink',
+      () => mocks.auth.signInWithOtp.mockResolvedValue({ error: new Error('otp failed') }),
+    ],
+    [
+      'verifyEmailCode',
+      () =>
+        mocks.auth.verifyOtp.mockResolvedValue({
+          data: { session: null },
+          error: new Error('code expired'),
+        }),
+    ],
+    [
+      'getCurrentSession',
+      () => mocks.auth.getSession.mockRejectedValue(new Error('session failed')),
+    ],
     ['signOut', () => mocks.auth.signOut.mockResolvedValue({ error: new Error('signout failed') })],
   ])('propagates %s errors', async (method, configureFailure) => {
     configureFailure();
@@ -152,6 +204,10 @@ describe('Supabase auth service', () => {
 
     if (method === 'requestMagicLink')
       await expect(auth.requestMagicLink('warrior@example.test')).rejects.toThrow('otp failed');
+    if (method === 'verifyEmailCode')
+      await expect(auth.verifyEmailCode('warrior@example.test', '123456')).rejects.toThrow(
+        'code expired',
+      );
     if (method === 'getCurrentSession')
       await expect(auth.getCurrentSession()).rejects.toThrow('session failed');
     if (method === 'signOut') await expect(auth.signOut()).rejects.toThrow('signout failed');
