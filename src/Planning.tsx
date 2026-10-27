@@ -4,12 +4,14 @@ import {
   addDays,
   addVersion,
   areaNames,
+  currentPeriodIndex,
   datesBetween,
   formatDate,
   habitsAt,
   localDate,
   missionsAt,
   monthPeriods,
+  renameHabit,
   updateGoal,
   uid,
   type Goal,
@@ -18,21 +20,19 @@ import {
 import { Badge, DayPicker, Field, HabitIcon, Heading, Modal, longDays, type PageProps } from './ui';
 export function Planning(p: PageProps) {
   const today = localDate(),
-    [selectedMonth, setSelectedMonth] = useState(0),
+    periods = monthPeriods(p.state.cycleStart),
+    [selectedMonth, setSelectedMonth] = useState(() =>
+      currentPeriodIndex(p.state.cycleStart, p.date),
+    ),
     [editHabit, setEditHabit] = useState<Habit | null>(null),
     [from, setFrom] = useState(addDays(today, 1)),
     [to, setTo] = useState(''),
     [goal, setGoal] = useState<Goal | null>(null),
     [cycle, setCycle] = useState(p.state.cycleStart);
-  const periods = monthPeriods(p.state.cycleStart),
-    period = periods[selectedMonth],
-    schedule = [
-      ...new Map(
-        datesBetween(period.start, period.end)
-          .flatMap((d) => habitsAt(p.state, d))
-          .map((h) => [h.id, h] as const),
-      ).values(),
-    ];
+  const period = periods[selectedMonth],
+    referenceDate =
+      p.date < period.start ? period.start : p.date > period.end ? period.end : p.date,
+    schedule = habitsAt(p.state, referenceDate);
   const openHabit = (h: Habit, monthly = false) => {
     setEditHabit(structuredClone(h));
     setFrom(monthly ? period.start : h.effectiveFrom);
@@ -178,7 +178,10 @@ export function Planning(p: PageProps) {
         <div className="section-title">
           <div>
             <h2>Acciones que te acercan</h2>
-            <p>Los totales cuentan solo las ocasiones programadas dentro del mes.</p>
+            <p>
+              Programación al {formatDate(referenceDate)}. Los totales consideran todos los cambios
+              del mes.
+            </p>
           </div>
         </div>
         <div className="habit-plan-list">
@@ -205,6 +208,7 @@ export function Planning(p: PageProps) {
                       ? h.days.map((day) => longDays[day].slice(0, 3)).join(' · ')
                       : 'Días en descanso'}{' '}
                     · Desde {formatDate(h.effectiveFrom)}
+                      {h.effectiveTo ? ` hasta ${formatDate(h.effectiveTo)}` : ' en adelante'}
                   </small>
                 </div>
                 <div className="month-total">
@@ -262,21 +266,51 @@ export function Planning(p: PageProps) {
           <form
             onSubmit={(e) => {
               e.preventDefault();
+              const name = editHabit.name.trim();
+              if (!name) {
+                p.notify('El nombre de la acción es obligatorio.');
+                return;
+              }
               if (to && to < from) {
                 p.notify('La fecha de término debe ser igual o posterior al inicio.');
                 return;
               }
               p.update((s) => {
+                const current = s.habits.find((h) => h.versionId === editHabit.versionId);
+                const sameProgram =
+                  current &&
+                  current.target === editHabit.target &&
+                  current.days.join(',') === editHabit.days.join(',');
+                const sameWindow =
+                  current &&
+                  current.effectiveFrom === from &&
+                  (current.effectiveTo ?? undefined) === (to || undefined);
+                Object.assign(s, renameHabit(s, editHabit.id, name));
+                if (sameProgram && sameWindow) return;
                 if (!s.onboarded) {
                   s.habits = s.habits.map((h) =>
-                    h.versionId === editHabit.versionId ? { ...editHabit, versionId: uid() } : h,
+                    h.versionId === editHabit.versionId
+                      ? { ...editHabit, name, versionId: uid() }
+                      : h,
                   );
-                } else Object.assign(s, addVersion(s, editHabit, from, to || undefined));
+                } else
+                  Object.assign(
+                    s,
+                    addVersion(s, { ...editHabit, name }, from, to || undefined),
+                  );
               });
               p.notify('Programación guardada. El historial se mantiene.');
               setEditHabit(null);
             }}
           >
+            <Field label="Nombre de la acción">
+              <input
+                required
+                type="text"
+                value={editHabit.name}
+                onChange={(e) => setEditHabit({ ...editHabit, name: e.target.value })}
+              />
+            </Field>
             <div className="form-grid">
               <Field label="Vigente desde">
                 <input
@@ -322,7 +356,14 @@ export function Planning(p: PageProps) {
                 ? 'Puedes corregir una programación pasada o futura. Si indicas una fecha de término, después volverá la programación anterior.'
                 : 'Estás configurando la programación inicial. La fecha y los días elegidos quedarán guardados para esta actividad.'}
             </p>
-            <button className="primary full">Guardar programación</button>
+            <div className="modal-actions">
+              <button type="button" className="secondary" onClick={() => setEditHabit(null)}>
+                Cancelar
+              </button>
+              <button className="primary" type="submit">
+                Guardar programación
+              </button>
+            </div>
           </form>
         </Modal>
       )}

@@ -5,6 +5,7 @@ import {
   applyReview,
   completedMissionsAt,
   completion,
+  currentPeriodIndex,
   emptyJournal,
   habitsAt,
   initialState,
@@ -12,6 +13,7 @@ import {
   missionsAt,
   monthPeriods,
   ruleSuggestions,
+  renameHabit,
   streak,
   totalXp,
   undoReview,
@@ -34,6 +36,36 @@ describe('Calendario y planificación', () => {
     const s = initialState(monday);
     s.cycleStart = '2026-10-15';
     expect(s.goals.every((g) => g.deadline === '2026-11-30')).toBe(true);
+  });
+  it('selecciona el periodo que contiene la fecha de Planificación', () => {
+    expect(currentPeriodIndex('2026-09-21', '2026-10-26')).toBe(1);
+    expect(currentPeriodIndex('2026-09-21', '2026-09-20')).toBe(0);
+    expect(currentPeriodIndex('2026-09-21', '2027-01-01')).toBe(2);
+  });
+  it('distingue la programación diaria de una versión posterior restringida', () => {
+    let s = initialState('2026-09-21');
+    const cardio = habitsAt(s, '2026-09-21').find((h) => h.id === 'cardio')!;
+    s = addVersion(s, { ...cardio, name: 'Cardio diario', days: [0, 1, 2, 3, 4, 5, 6] }, '2026-09-21');
+    s = addVersion(s, { ...cardio, name: 'Cardio diario', days: [2, 4, 6] }, '2026-10-21');
+
+    expect(currentPeriodIndex(s.cycleStart, '2026-10-26')).toBe(1);
+    expect(habitsAt(s, '2026-09-26').find((h) => h.id === 'cardio')?.days).toEqual([
+      0, 1, 2, 3, 4, 5, 6,
+    ]);
+    expect(missionsAt(s, '2026-09-26').some((h) => h.id === 'cardio')).toBe(true);
+    expect(habitsAt(s, '2026-10-26').find((h) => h.id === 'cardio')?.days).toEqual([2, 4, 6]);
+    expect(missionsAt(s, '2026-10-26').some((h) => h.id === 'cardio')).toBe(false);
+
+    let uninterrupted = initialState('2026-09-21');
+    const uninterruptedCardio = habitsAt(uninterrupted, uninterrupted.cycleStart).find(
+      (h) => h.id === 'cardio',
+    )!;
+    uninterrupted = addVersion(
+      uninterrupted,
+      { ...uninterruptedCardio, name: 'Cardio diario', days: [0, 1, 2, 3, 4, 5, 6] },
+      '2026-09-21',
+    );
+    expect(missionsAt(uninterrupted, '2026-10-26').some((h) => h.id === 'cardio')).toBe(true);
   });
   it('programa cuatro sesiones de fuerza y tres de cardio sin duplicados', () => {
     const s = initialState(monday);
@@ -202,5 +234,23 @@ describe('Revisión y copias', () => {
     expect(updated.measurements).toEqual(s.measurements);
     expect(updated.milestones).toEqual(s.milestones);
     expect(() => updateGoal(s, { ...goal, name: '   ' })).toThrow('nombre');
+  });
+  it('renombra todas las versiones de una acción sin tocar registros ni programación', () => {
+    let s = initialState(monday);
+    const strength = s.habits.find((h) => h.id === 'strength')!;
+    s = addVersion(s, { ...strength, days: [1, 3, 5] }, '2026-09-21', '2026-09-27');
+    s.records[monday] = { strength: 1 };
+    const before = s.habits
+      .filter((h) => h.id === 'strength')
+      .map(({ name, ...h }) => h);
+
+    const renamed = renameHabit(s, 'strength', '  Fuerza  ');
+
+    expect(renamed.habits.filter((h) => h.id === 'strength').every((h) => h.name === 'Fuerza')).toBe(
+      true,
+    );
+    expect(renamed.habits.filter((h) => h.id === 'strength').map(({ name, ...h }) => h)).toEqual(before);
+    expect(renamed.records).toEqual(s.records);
+    expect(() => renameHabit(s, 'strength', '   ')).toThrow('nombre');
   });
 });

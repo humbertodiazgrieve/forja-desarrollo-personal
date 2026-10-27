@@ -144,6 +144,11 @@ export function monthPeriods(start: string) {
     end: addDays(addMonths(start, i + 1), -1),
   }));
 }
+export function currentPeriodIndex(start: string, date: string) {
+  const periods = monthPeriods(start);
+  const current = periods.findIndex((period) => date >= period.start && date <= period.end);
+  return current >= 0 ? current : date < periods[0].start ? 0 : periods.length - 1;
+}
 export function formatDate(
   s: string,
   options: Intl.DateTimeFormatOptions = { day: 'numeric', month: 'short' },
@@ -358,6 +363,15 @@ export function updateGoal(s: AppState, edited: Goal): AppState {
     goals: s.goals.map((g) =>
       g.id === current.id ? { ...g, ...edited, id: current.id, name } : g,
     ),
+  };
+}
+export function renameHabit(s: AppState, id: string, name: string): AppState {
+  const trimmed = name.trim();
+  if (!trimmed) throw Error('El nombre de la acción es obligatorio.');
+  if (!s.habits.some((h) => h.id === id)) throw Error('Acción no encontrada.');
+  return {
+    ...s,
+    habits: s.habits.map((h) => (h.id === id ? { ...h, name: trimmed } : h)),
   };
 }
 export function addVersion(s: AppState, h: Habit, from: string, to?: string): AppState {
