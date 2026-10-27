@@ -1,5 +1,15 @@
 import { useEffect, useState } from 'react';
 import { CalendarDays, Check, Flame } from 'lucide-react';
+import {
+  CartesianGrid,
+  Line,
+  LineChart,
+  ReferenceLine,
+  ResponsiveContainer,
+  Tooltip,
+  XAxis,
+  YAxis,
+} from 'recharts';
 import { addDays, formatDate, recordedCalorieBalance } from './domain';
 import { Badge, Empty, Field, Heading, Modal, type PageProps } from './ui';
 
@@ -9,6 +19,81 @@ const validNumber = (value: string) => {
   const number = Number(value);
   return Number.isFinite(number) && number >= 0 && number <= 1000000 ? number : undefined;
 };
+
+function balanceDescription(value: number) {
+  const amount = Math.abs(Math.round(value * 100) / 100);
+  return value > 0
+    ? `Déficit estimado: ${amount} kcal`
+    : value < 0
+      ? `Superávit estimado: ${amount} kcal`
+      : 'Equilibrio: 0 kcal';
+}
+
+function CalorieBalanceChart({ data }: { data: { date: string; value: number | null }[] }) {
+  const completeDays = data.filter((item) => item.value !== null);
+  if (!completeDays.length) {
+    return (
+      <Empty title="Aún no hay balances completos">
+        Registra consumo y gasto total en el mismo día para ver el déficit estimado.
+      </Empty>
+    );
+  }
+
+  return (
+    <div
+      className="chart"
+      role="img"
+      aria-label={
+        'Déficit estimado: ' +
+        completeDays.map((item) => `${item.date}: ${balanceDescription(item.value!)}`).join(', ')
+      }
+    >
+      <ResponsiveContainer width="100%" height="100%">
+        <LineChart data={data} margin={{ top: 14, right: 20, left: -12, bottom: 0 }}>
+          <CartesianGrid vertical={false} stroke="#ffffff0b" />
+          <XAxis
+            dataKey="date"
+            tick={{ fill: '#8c978e', fontSize: 11 }}
+            tickFormatter={(date) => String(date).slice(5).split('-').reverse().join('/')}
+            axisLine={false}
+            tickLine={false}
+            minTickGap={25}
+          />
+          <YAxis
+            domain={['auto', 'auto']}
+            tick={{ fill: '#8c978e', fontSize: 11 }}
+            axisLine={false}
+            tickLine={false}
+            width={47}
+          />
+          <Tooltip
+            contentStyle={{
+              background: '#222b25',
+              border: '1px solid #46503e',
+              borderRadius: 10,
+              color: '#eee',
+            }}
+            labelFormatter={(date) =>
+              formatDate(String(date), { day: 'numeric', month: 'short', year: 'numeric' })
+            }
+            formatter={(value) => [balanceDescription(Number(value)), 'Balance']}
+          />
+          <ReferenceLine y={0} stroke="#8c978e" strokeDasharray="4 5" ifOverflow="extendDomain" />
+          <Line
+            type="monotone"
+            dataKey="value"
+            stroke="#d9b77b"
+            strokeWidth={2.5}
+            dot={{ r: 3, fill: '#d9b77b' }}
+            activeDot={{ r: 6 }}
+            connectNulls={false}
+            isAnimationActive={false}
+          />
+        </LineChart>
+      </ResponsiveContainer>
+    </div>
+  );
+}
 
 export function Calories(p: PageProps) {
   const savedConsumption = p.state.records[p.date]?.calories,
@@ -28,6 +113,10 @@ export function Calories(p: PageProps) {
   }, [p.date, savedConsumption, savedExpenditure]);
 
   const balance = recordedCalorieBalance(p.state, p.date),
+    chartData = Array.from({ length: 30 }, (_, index) => {
+      const date = addDays(p.date, index - 29);
+      return { date, value: recordedCalorieBalance(p.state, date)?.balance ?? null };
+    }),
     historyDates = [
       ...new Set([
         ...Object.keys(p.state.records),
@@ -151,6 +240,17 @@ export function Calories(p: PageProps) {
         ) : (
           <p className="notice">Completa consumo y gasto para mostrar el balance del día.</p>
         )}
+      </section>
+      <section className="panel">
+        <div className="section-title">
+          <div>
+            <h2>Déficit estimado</h2>
+            <p>Gasto total menos consumo en los últimos 30 días.</p>
+          </div>
+          <CalendarDays size={20} />
+        </div>
+        <CalorieBalanceChart data={chartData} />
+        <p className="notice">+ déficit · − superávit · 0 equilibrio.</p>
       </section>
       <section className="panel">
         <div className="section-title">
