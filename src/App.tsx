@@ -8,7 +8,6 @@ import {
   Shield,
   CalendarDays,
   Settings as SettingsIcon,
-  Wallet,
   Flame,
   ChevronLeft,
   ChevronRight,
@@ -28,10 +27,9 @@ import { Planning } from './Planning';
 import { Journal } from './Journal';
 import { Progress, WarriorPage } from './Progress';
 import { Calories } from './Calories';
-import { Review } from './Review';
 import { Settings } from './Settings';
 import { useAutoSync } from './auto-sync';
-import { Empty, Heading, type Page, type PageProps, type Update } from './ui';
+import { type Page, type PageProps, type Update } from './ui';
 
 const navigation = [
   { id: 'home', label: 'Mi refugio', icon: LayoutDashboard },
@@ -40,7 +38,6 @@ const navigation = [
   { id: 'planning', label: 'Planificación', icon: Map },
   { id: 'journal', label: 'Mi diario', icon: NotebookPen },
   { id: 'progress', label: 'Mi progreso', icon: ChartNoAxesCombined },
-  { id: 'review', label: 'Revisión semanal', icon: CalendarDays },
 ] as const;
 export default function App() {
   const [state, setState] = useState<AppState | null>(null),
@@ -218,28 +215,10 @@ export default function App() {
       <Progress {...props} />
     ) : page === 'warrior' ? (
       <WarriorPage {...props} />
-    ) : page === 'review' ? (
-      <Review {...props} />
     ) : page === 'settings' ? (
       <Settings {...props} autoSync={autoSync} />
     ) : (
-      <>
-        <Heading
-          eyebrow="UN NUEVO HORIZONTE"
-          title="Tu camino financiero"
-          description="Este espacio te espera para cuando decidas tus metas."
-        />
-        <section className="panel finance-empty">
-          <Wallet size={45} />
-          <Empty title="Todo empieza con una intención">
-            Las metas financieras están pendientes de definir. Esta área no afecta tus puntos,
-            rachas o porcentajes de cumplimiento.
-          </Empty>
-          <button className="secondary" onClick={() => go('home')}>
-            Volver a mi refugio
-          </button>
-        </section>
-      </>
+      <Home {...props} />
     );
   const xpToast = toast.match(/^\+(\d+) XP de experiencia(?: · (.*))?$/);
   return (
@@ -261,15 +240,6 @@ export default function App() {
             </button>
           ))}
         </nav>
-        <div className="nav-divider" />
-        <button
-          className={'finance-nav ' + (page === 'finance' ? 'active' : '')}
-          onClick={() => go('finance')}
-        >
-          <Wallet size={18} />
-          <span>Finanzas</span>
-          <small>Pronto</small>
-        </button>
         <div className="sidebar-bottom">
           <div className="mini-profile">
             <span className="profile-shield">
@@ -300,8 +270,7 @@ export default function App() {
           <div className="breadcrumb">
             Mi espacio <ChevronRight size={13} />{' '}
             <span>
-              {navigation.find((n) => n.id === page)?.label ??
-                (page === 'finance' ? 'Finanzas' : 'Ajustes')}
+              {navigation.find((n) => n.id === page)?.label ?? 'Ajustes'}
             </span>
           </div>
           <div className="topbar-right">

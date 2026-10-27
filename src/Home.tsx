@@ -329,27 +329,7 @@ export function Home(p: PageProps) {
         </>
       );
     }
-    return (
-      <div className="review-widget">
-        <span className="habit-icon gold">
-          <CalendarDays size={22} />
-        </span>
-        <div className="eyebrow">TU RITUAL DEL DOMINGO</div>
-        <h2>
-          Reflexiona.
-          <br />
-          Ajusta. Continúa.
-        </h2>
-        <p>
-          Una semana para aprender.
-          <br />
-          Otra para volver a intentarlo.
-        </p>
-        <button className="secondary full" onClick={() => p.go('review')}>
-          Planificar mi semana <ArrowRight size={15} />
-        </button>
-      </div>
-    );
+    return null;
   };
   return (
     <>
@@ -550,7 +530,7 @@ export function Home(p: PageProps) {
       </section>
       <div className={'dashboard-grid ' + (custom ? 'customizing' : '')}>
         {p.state.widgets
-          .filter((w) => w.visible || custom)
+          .filter((w) => w.id !== 'review' && (w.visible || custom))
           .map((w, i) => (
             <section
               key={w.id}
