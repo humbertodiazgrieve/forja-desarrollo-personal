@@ -9,6 +9,7 @@ import {
   CalendarDays,
   Settings as SettingsIcon,
   Wallet,
+  Flame,
   ChevronLeft,
   ChevronRight,
   Check,
@@ -26,6 +27,7 @@ import { Missions } from './Missions';
 import { Planning } from './Planning';
 import { Journal } from './Journal';
 import { Progress, WarriorPage } from './Progress';
+import { Calories } from './Calories';
 import { Review } from './Review';
 import { Settings } from './Settings';
 import { useAutoSync } from './auto-sync';
@@ -34,10 +36,10 @@ import { Empty, Heading, type Page, type PageProps, type Update } from './ui';
 const navigation = [
   { id: 'home', label: 'Mi refugio', icon: LayoutDashboard },
   { id: 'missions', label: 'Misiones de hoy', icon: Swords },
+  { id: 'calories', label: 'Calorías', icon: Flame },
   { id: 'planning', label: 'Planificación', icon: Map },
   { id: 'journal', label: 'Mi diario', icon: NotebookPen },
   { id: 'progress', label: 'Mi progreso', icon: ChartNoAxesCombined },
-  { id: 'warrior', label: 'Mi guerrero', icon: Shield },
   { id: 'review', label: 'Revisión semanal', icon: CalendarDays },
 ] as const;
 export default function App() {
@@ -206,6 +208,8 @@ export default function App() {
       <Home {...props} />
     ) : page === 'missions' ? (
       <Missions {...props} />
+    ) : page === 'calories' ? (
+      <Calories {...props} />
     ) : page === 'planning' ? (
       <Planning {...props} />
     ) : page === 'journal' ? (

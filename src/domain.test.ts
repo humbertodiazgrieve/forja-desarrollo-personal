@@ -13,6 +13,7 @@ import {
   missionsAt,
   monthPeriods,
   ruleSuggestions,
+  recordedCalorieBalance,
   renameHabit,
   streak,
   totalXp,
@@ -41,6 +42,22 @@ describe('Calendario y planificación', () => {
     expect(currentPeriodIndex('2026-09-21', '2026-10-26')).toBe(1);
     expect(currentPeriodIndex('2026-09-21', '2026-09-20')).toBe(0);
     expect(currentPeriodIndex('2026-09-21', '2027-01-01')).toBe(2);
+  });
+  it('calcula el balance registrado solo con ambos datos y conserva el valor cero', () => {
+    const s = initialState(monday);
+    expect(recordedCalorieBalance(s, monday)).toBeNull();
+    s.records[monday] = { calories: 0 };
+    expect(recordedCalorieBalance(s, monday)).toBeNull();
+    s.calorieExpenditure = { [monday]: 0 };
+    expect(recordedCalorieBalance(s, monday)).toEqual({
+      consumption: 0,
+      expenditure: 0,
+      balance: 0,
+    });
+    s.calorieExpenditure[monday] = 700;
+    expect(recordedCalorieBalance(s, monday)?.balance).toBe(-700);
+    s.records[monday].calories = 900;
+    expect(recordedCalorieBalance(s, monday)?.balance).toBe(200);
   });
   it('distingue la programación diaria de una versión posterior restringida', () => {
     let s = initialState('2026-09-21');
@@ -214,6 +231,19 @@ describe('Revisión y copias', () => {
       validateState({ ...s, widgets: [s.widgets[0], ...s.widgets.slice(0, 6)] }),
     ).toThrow();
     expect(() => validateState({ ...s, records: { '2026-02-31': { water: 3 } } })).toThrow();
+  });
+  it('acepta copias antiguas sin gasto calórico y conserva el campo nuevo', () => {
+    const legacy = initialState(monday);
+    const loadedLegacy = validateState(JSON.parse(JSON.stringify(legacy)));
+    expect(loadedLegacy.calorieExpenditure).toBeUndefined();
+
+    const withExpenditure = {
+      ...legacy,
+      calorieExpenditure: { [monday]: 700 },
+    };
+    expect(validateState(JSON.parse(JSON.stringify(withExpenditure)))).toEqual(withExpenditure);
+    expect(() => validateState({ ...withExpenditure, calorieExpenditure: { [monday]: -1 } })).toThrow();
+    expect(() => validateState({ ...withExpenditure, calorieExpenditure: { [monday]: NaN } })).toThrow();
   });
   it('no pierde los registros al versionar una meta de hábito', () => {
     let s = initialState(monday);

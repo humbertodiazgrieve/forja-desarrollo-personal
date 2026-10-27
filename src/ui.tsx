@@ -25,6 +25,7 @@ export type Update = (mutate: (draft: AppState) => void) => void;
 export type Page =
   | 'home'
   | 'missions'
+  | 'calories'
   | 'planning'
   | 'journal'
   | 'progress'

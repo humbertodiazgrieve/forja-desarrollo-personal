@@ -230,6 +230,20 @@ export function Missions(p: PageProps) {
           </button>
         ))}
       </div>
+      {(area === 'all' || area === 'nutrition') && (
+        <section className="panel">
+          <div className="section-title">
+            <div>
+              <h2>Registrar gasto calórico</h2>
+              <p>Seguimiento separado del consumo y de las misiones con XP.</p>
+            </div>
+            <Flame size={20} />
+          </div>
+          <button className="secondary" onClick={() => p.go('calories')}>
+            Abrir registro de calorías
+          </button>
+        </section>
+      )}
       {!list.length ? (
         <Empty title="Sin misiones programadas">
           Puedes elegir los días de tus actividades en Planificación.

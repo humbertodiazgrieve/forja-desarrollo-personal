@@ -66,6 +66,12 @@ export const suggestionSchema = z.object({
   target: z.number().finite().positive().max(10000),
 });
 export type Suggestion = z.infer<typeof suggestionSchema>;
+const calorieSettingsSchema = z.object({
+  basal: finite,
+  maintenance: finite,
+  target: finite,
+  activityReference: finite,
+});
 export const stateSchema = z.object({
   schema: z.literal(1),
   onboarded: z.boolean(),
@@ -74,6 +80,9 @@ export const stateSchema = z.object({
   goals: z.array(goalSchema).length(3),
   records: z.record(dateSchema, z.record(z.string(), finite)),
   journals: z.record(dateSchema, journalSchema),
+  calorieExpenditure: z.record(dateSchema, finite).optional(),
+  calorieMaintenance: z.record(dateSchema, finite).optional(),
+  calorieSettings: calorieSettingsSchema.optional(),
   measurements: z.array(
     z.object({ id: z.string(), date: dateSchema, goalId: z.string(), value: finite }),
   ),
@@ -309,6 +318,20 @@ export function missionsWithHistoryAt(s: AppState, date: string) {
 }
 export function missionValue(s: AppState, h: Habit, date: string) {
   return h.kind === 'journal' ? (isDone(s, h, date) ? 1 : 0) : (s.records[date]?.[h.id] ?? 0);
+}
+export function recordedCalorieBalance(s: AppState, date: string) {
+  const consumption = s.records[date]?.calories,
+    expenditure = s.calorieExpenditure?.[date];
+  return consumption !== undefined && expenditure !== undefined
+    ? { consumption, expenditure, balance: consumption - expenditure }
+    : null;
+}
+export function recordedCalorieDeficit(s: AppState, date: string) {
+  const consumption = s.records[date]?.calories,
+    maintenance = s.calorieMaintenance?.[date];
+  return consumption !== undefined && maintenance !== undefined
+    ? { consumption, maintenance, deficit: maintenance - consumption }
+    : null;
 }
 export function totalXp(s: AppState, today = localDate()) {
   return [...new Set([...Object.keys(s.records), ...Object.keys(s.journals)])]

@@ -86,7 +86,11 @@ describe('AutoSyncEngine', () => {
     reloadedB.setUser('shared-user');
     await flush();
 
-    const updated = { ...baseline, records: { '2026-09-20': { cardio: 1 } } };
+    const updated = {
+      ...baseline,
+      records: { '2026-09-20': { cardio: 1 } },
+      calorieExpenditure: { '2026-09-20': 700 },
+    };
     clientA.setLocalState(updated);
     clientA.refresh();
     await flush();
