@@ -54,15 +54,22 @@ describe('Calendario y planificación', () => {
       expenditure: 0,
       balance: 0,
     });
-    s.calorieExpenditure[monday] = 700;
-    expect(recordedCalorieBalance(s, monday)?.balance).toBe(-700);
-    s.records[monday].calories = 900;
-    expect(recordedCalorieBalance(s, monday)?.balance).toBe(200);
+    s.calorieExpenditure[monday] = 3000;
+    s.records[monday].calories = 2076;
+    expect(recordedCalorieBalance(s, monday)?.balance).toBe(924);
+    s.records[monday].calories = 3200;
+    expect(recordedCalorieBalance(s, monday)?.balance).toBe(-200);
+    s.records[monday].calories = 3000;
+    expect(recordedCalorieBalance(s, monday)?.balance).toBe(0);
   });
   it('distingue la programación diaria de una versión posterior restringida', () => {
     let s = initialState('2026-09-21');
     const cardio = habitsAt(s, '2026-09-21').find((h) => h.id === 'cardio')!;
-    s = addVersion(s, { ...cardio, name: 'Cardio diario', days: [0, 1, 2, 3, 4, 5, 6] }, '2026-09-21');
+    s = addVersion(
+      s,
+      { ...cardio, name: 'Cardio diario', days: [0, 1, 2, 3, 4, 5, 6] },
+      '2026-09-21',
+    );
     s = addVersion(s, { ...cardio, name: 'Cardio diario', days: [2, 4, 6] }, '2026-10-21');
 
     expect(currentPeriodIndex(s.cycleStart, '2026-10-26')).toBe(1);
@@ -242,8 +249,12 @@ describe('Revisión y copias', () => {
       calorieExpenditure: { [monday]: 700 },
     };
     expect(validateState(JSON.parse(JSON.stringify(withExpenditure)))).toEqual(withExpenditure);
-    expect(() => validateState({ ...withExpenditure, calorieExpenditure: { [monday]: -1 } })).toThrow();
-    expect(() => validateState({ ...withExpenditure, calorieExpenditure: { [monday]: NaN } })).toThrow();
+    expect(() =>
+      validateState({ ...withExpenditure, calorieExpenditure: { [monday]: -1 } }),
+    ).toThrow();
+    expect(() =>
+      validateState({ ...withExpenditure, calorieExpenditure: { [monday]: NaN } }),
+    ).toThrow();
   });
   it('no pierde los registros al versionar una meta de hábito', () => {
     let s = initialState(monday);
@@ -270,16 +281,16 @@ describe('Revisión y copias', () => {
     const strength = s.habits.find((h) => h.id === 'strength')!;
     s = addVersion(s, { ...strength, days: [1, 3, 5] }, '2026-09-21', '2026-09-27');
     s.records[monday] = { strength: 1 };
-    const before = s.habits
-      .filter((h) => h.id === 'strength')
-      .map(({ name, ...h }) => h);
+    const before = s.habits.filter((h) => h.id === 'strength').map(({ name, ...h }) => h);
 
     const renamed = renameHabit(s, 'strength', '  Fuerza  ');
 
-    expect(renamed.habits.filter((h) => h.id === 'strength').every((h) => h.name === 'Fuerza')).toBe(
-      true,
+    expect(
+      renamed.habits.filter((h) => h.id === 'strength').every((h) => h.name === 'Fuerza'),
+    ).toBe(true);
+    expect(renamed.habits.filter((h) => h.id === 'strength').map(({ name, ...h }) => h)).toEqual(
+      before,
     );
-    expect(renamed.habits.filter((h) => h.id === 'strength').map(({ name, ...h }) => h)).toEqual(before);
     expect(renamed.records).toEqual(s.records);
     expect(() => renameHabit(s, 'strength', '   ')).toThrow('nombre');
   });

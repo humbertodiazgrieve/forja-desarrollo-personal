@@ -323,7 +323,7 @@ export function recordedCalorieBalance(s: AppState, date: string) {
   const consumption = s.records[date]?.calories,
     expenditure = s.calorieExpenditure?.[date];
   return consumption !== undefined && expenditure !== undefined
-    ? { consumption, expenditure, balance: consumption - expenditure }
+    ? { consumption, expenditure, balance: expenditure - consumption }
     : null;
 }
 export function recordedCalorieDeficit(s: AppState, date: string) {

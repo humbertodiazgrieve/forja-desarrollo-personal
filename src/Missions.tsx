@@ -87,7 +87,7 @@ export function MissionCard({
         ) : h.kind === 'session' ? (
           'Una sesión, un paso adelante'
         ) : h.kind === 'calories' ? (
-          `Referencia diaria · ${h.target} kcal`
+          'Consumo total del día'
         ) : (
           `Objetivo · ${h.target} ${h.unit}`
         )}
@@ -153,8 +153,7 @@ export function MissionCard({
       </div>
       {h.kind === 'calories' && p.state.records[p.date]?.[h.id] !== undefined && (
         <small className="calorie-diff">
-          {value - h.target > 0 ? '+' : ''}
-          {Math.round(value - h.target)} kcal respecto a la referencia
+          {Math.round(value)} kcal registrados
         </small>
       )}
       {edit && (

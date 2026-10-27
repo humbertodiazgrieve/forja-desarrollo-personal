@@ -1,9 +1,9 @@
 import { useEffect, useState } from 'react';
 import { CalendarDays, Check, Flame } from 'lucide-react';
 import { addDays, formatDate, recordedCalorieBalance } from './domain';
-import { Badge, Empty, Field, Heading, type PageProps } from './ui';
+import { Badge, Empty, Field, Heading, Modal, type PageProps } from './ui';
 
-const REFERENCE_EXPENDITURE = 700;
+const REFERENCE_EXPENDITURE = 3000;
 const validNumber = (value: string) => {
   if (!value.trim()) return null;
   const number = Number(value);
@@ -16,7 +16,12 @@ export function Calories(p: PageProps) {
   const [consumption, setConsumption] = useState(() => String(savedConsumption ?? '')),
     [expenditure, setExpenditure] = useState(() =>
       String(savedExpenditure ?? REFERENCE_EXPENDITURE),
-    );
+    ),
+    [editing, setEditing] = useState<{
+      date: string;
+      consumption: string;
+      expenditure: string;
+    } | null>(null);
   useEffect(() => {
     setConsumption(String(savedConsumption ?? ''));
     setExpenditure(String(savedExpenditure ?? REFERENCE_EXPENDITURE));
@@ -99,8 +104,8 @@ export function Calories(p: PageProps) {
               />
             </Field>
             <Field
-              label="Gasto registrado (kcal)"
-              hint="700 kcal es una referencia editable. Vacío elimina solo el gasto guardado de ese día."
+              label="Gasto total del día (basal + actividad) (kcal)"
+              hint="3000 kcal es una referencia editable; vacío elimina solo el gasto guardado de ese día."
             >
               <input
                 type="number"
@@ -117,26 +122,30 @@ export function Calories(p: PageProps) {
           </button>
         </form>
         <p className="notice">
-          Si el gasto corresponde solo a actividad, esta diferencia no representa tu déficit total.
+          Este campo representa el gasto total del día; no se suma otra vez ninguna actividad.
         </p>
       </section>
       <section className="panel">
         <div className="section-title">
           <div>
-            <h2>Balance registrado</h2>
-            <p>Consumo menos gasto registrado. Solo se calcula con ambos datos del día.</p>
+            <h2>Balance estimado</h2>
+            <p>Gasto total menos consumo, usando los dos datos registrados del día.</p>
           </div>
           <CalendarDays size={20} />
         </div>
         {balance ? (
           <div className="goal-journey">
             <strong>
-              {balance.balance > 0 ? '+' : ''}
-              {Math.round(balance.balance * 100) / 100}
+              {Math.abs(Math.round(balance.balance * 100) / 100)}
               <small>kcal</small>
             </strong>
             <p>
-              {balance.consumption} kcal de consumo − {balance.expenditure} kcal de gasto registrado
+              {balance.expenditure} − {balance.consumption} = {balance.balance} kcal ·{' '}
+              {balance.balance > 0
+                ? 'Déficit estimado'
+                : balance.balance < 0
+                  ? 'Superávit estimado'
+                  : 'Equilibrio'}
             </p>
           </div>
         ) : (
@@ -147,7 +156,7 @@ export function Calories(p: PageProps) {
         <div className="section-title">
           <div>
             <h2>Historial reciente</h2>
-            <p>Últimos 30 días con consumo y gasto registrados.</p>
+            <p>Últimos 30 días con registros de consumo o gasto total.</p>
           </div>
         </div>
         {history.length ? (
@@ -162,23 +171,104 @@ export function Calories(p: PageProps) {
                 <div key={date}>
                   <strong>{formatDate(date, { day: 'numeric', month: 'short' })}</strong>
                   <span>Consumo: {itemConsumption ?? '—'} kcal</span>
-                  <span>Gasto: {itemExpenditure ?? '—'} kcal</span>
+                  <span>Gasto total: {itemExpenditure ?? '—'} kcal</span>
                   <small>
                     Balance:{' '}
                     {item
-                      ? `${item.balance > 0 ? '+' : ''}${Math.round(item.balance * 100) / 100} kcal`
+                      ? `${Math.abs(Math.round(item.balance * 100) / 100)} kcal · ${item.balance > 0 ? 'Déficit estimado' : item.balance < 0 ? 'Superávit estimado' : 'Equilibrio'}`
                       : '—'}
                   </small>
+                  <button
+                    type="button"
+                    className="text-button"
+                    aria-label={`Editar registro del ${formatDate(date, { day: 'numeric', month: 'long', year: 'numeric' })}`}
+                    onClick={() =>
+                      setEditing({
+                        date,
+                        consumption: String(itemConsumption ?? ''),
+                        expenditure: String(itemExpenditure ?? ''),
+                      })
+                    }
+                  >
+                    Editar
+                  </button>
                 </div>
               ),
             )}
           </div>
         ) : (
-          <Empty title="Todavía no hay días completos">
-            El historial aparece cuando un día tiene consumo y gasto registrados.
+          <Empty title="No hay registros de calorías">
+            Aquí aparecerán los días con consumo o gasto total registrados.
           </Empty>
         )}
       </section>
+      {editing && (
+        <Modal
+          title={`Editar registro · ${formatDate(editing.date, {
+            day: 'numeric',
+            month: 'long',
+            year: 'numeric',
+          })}`}
+          onClose={() => setEditing(null)}
+        >
+          <form
+            onSubmit={(event) => {
+              event.preventDefault();
+              const parsedConsumption = validNumber(editing.consumption),
+                parsedExpenditure = validNumber(editing.expenditure);
+              if (parsedConsumption === undefined || parsedExpenditure === undefined) {
+                p.notify('Usa valores de calorías finitos y no negativos.');
+                return;
+              }
+              p.update((s) => {
+                if (parsedConsumption === null) {
+                  if (s.records[editing.date]) delete s.records[editing.date].calories;
+                } else {
+                  s.records[editing.date] ??= {};
+                  s.records[editing.date].calories = Math.round(parsedConsumption * 100) / 100;
+                }
+                if (parsedExpenditure === null) {
+                  if (s.calorieExpenditure) delete s.calorieExpenditure[editing.date];
+                } else {
+                  s.calorieExpenditure ??= {};
+                  s.calorieExpenditure[editing.date] = Math.round(parsedExpenditure * 100) / 100;
+                }
+              });
+              p.notify('Registro de calorías actualizado.');
+              setEditing(null);
+            }}
+          >
+            <Field label="Consumo registrado (kcal)">
+              <input
+                type="number"
+                min="0"
+                max="1000000"
+                step="any"
+                value={editing.consumption}
+                onChange={(event) => setEditing({ ...editing, consumption: event.target.value })}
+              />
+            </Field>
+            <Field label="Gasto total del día (basal + actividad) (kcal)">
+              <input
+                type="number"
+                min="0"
+                max="1000000"
+                step="any"
+                value={editing.expenditure}
+                onChange={(event) => setEditing({ ...editing, expenditure: event.target.value })}
+              />
+            </Field>
+            <div className="modal-actions">
+              <button type="button" className="secondary" onClick={() => setEditing(null)}>
+                Cancelar
+              </button>
+              <button className="primary" type="submit">
+                Guardar cambios
+              </button>
+            </div>
+          </form>
+        </Modal>
+      )}
     </>
   );
 }
