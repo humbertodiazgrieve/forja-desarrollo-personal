@@ -46,6 +46,7 @@ import {
   type PageProps,
 } from './ui';
 import { MissionCard } from './Missions';
+import { FatProgress } from './FatProgress';
 export function Home(p: PageProps) {
   const [physicalMetric, setPhysicalMetric] = useState('weight'),
     [custom, setCustom] = useState(false),
@@ -410,6 +411,7 @@ export function Home(p: PageProps) {
           </div>
         </div>
       </div>
+      <FatProgress state={p.state} date={p.date} />
       <section className="panel monthly-refuge">
         <div className="section-title">
           <div>

@@ -12,6 +12,7 @@ import {
 } from 'recharts';
 import { addDays, formatDate, recordedCalorieBalance } from './domain';
 import { Badge, Empty, Field, Heading, Modal, type PageProps } from './ui';
+import { FatProgress } from './FatProgress';
 
 const REFERENCE_EXPENDITURE = 3000;
 const validNumber = (value: string) => {
@@ -141,6 +142,7 @@ export function Calories(p: PageProps) {
         title="Calorías"
         description="Registra consumo y gasto y consulta el balance de cada día."
       />
+      <FatProgress state={p.state} date={p.date} />
       <section className="panel">
         <div className="section-title">
           <div>

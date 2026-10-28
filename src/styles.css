@@ -2965,3 +2965,70 @@ dialog::backdrop {
 .widget.physical .chart.small {
   height: 150px;
 }
+
+.fat-progress {
+  display: grid;
+  grid-template-columns: 180px minmax(0, 1fr);
+  gap: 30px;
+  align-items: center;
+  background: radial-gradient(ellipse at 0% 100%, #80603520, transparent 65%), var(--panel);
+}
+.fat-progress-art {
+  text-align: center;
+  color: var(--gold);
+  font-size: 12px;
+}
+.fat-progress-art svg {
+  display: block;
+  width: 100%;
+  max-height: 204px;
+  margin-bottom: 8px;
+}
+.fat-progress-copy {
+  min-width: 0;
+}
+.fat-progress-copy h2 {
+  margin: 8px 0 12px;
+}
+.fat-progress-total {
+  color: var(--muted);
+}
+.fat-progress-total strong {
+  color: var(--gold);
+  font-size: 28px;
+  margin-right: 6px;
+}
+.fat-progress-track {
+  margin-top: 16px;
+}
+.fat-progress-track span {
+  background: var(--gold);
+  transition: none;
+}
+.fat-progress-caption {
+  font-size: 12px;
+  color: var(--gold);
+}
+.fat-progress-message {
+  line-height: 1.6;
+}
+.fat-progress-copy .notice {
+  margin-bottom: 0;
+  line-height: 1.6;
+}
+@media (max-width: 600px) {
+  .fat-progress {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 18px;
+  }
+  .fat-progress-art {
+    width: 132px;
+    justify-self: center;
+  }
+  .fat-progress-art svg {
+    max-height: 150px;
+  }
+  .fat-progress-total strong {
+    display: block;
+  }
+}

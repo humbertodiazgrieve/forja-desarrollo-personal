@@ -326,6 +326,30 @@ export function recordedCalorieBalance(s: AppState, date: string) {
     ? { consumption, expenditure, balance: expenditure - consumption }
     : null;
 }
+export function cumulativeFatEstimate(s: AppState, throughDate: string) {
+  let netKcal = 0;
+  let recordedDays = 0;
+  for (const date of Object.keys(s.records).sort()) {
+    if (date > throughDate) continue;
+    const recorded = recordedCalorieBalance(s, date);
+    if (!recorded) continue;
+    netKcal += recorded.balance;
+    recordedDays++;
+  }
+  // Saved calorie entries have two decimal places. Round once to prevent boundary drift.
+  netKcal = Math.round(netKcal * 100) / 100;
+  const positiveKcal = Math.max(0, netKcal);
+  const completedKg = Math.floor(positiveKcal / 7700);
+  const currentKcal = Math.round((positiveKcal - completedKg * 7700) * 100) / 100;
+  return {
+    netKcal,
+    recordedDays,
+    estimatedKg: positiveKcal / 7700,
+    completedKg,
+    currentKcal,
+    fraction: currentKcal / 7700,
+  };
+}
 export function recordedCalorieDeficit(s: AppState, date: string) {
   const consumption = s.records[date]?.calories,
     maintenance = s.calorieMaintenance?.[date];
