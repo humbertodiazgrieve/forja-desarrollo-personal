@@ -41,27 +41,6 @@ export function normalizeEmail(email: string): string {
   return normalizedEmail;
 }
 
-export function normalizeEmailOtpToken(token: string): string {
-  const normalizedToken = token.trim();
-  if (!normalizedToken) throw new Error('El código es obligatorio.');
-  if (!/^\d+$/.test(normalizedToken)) throw new Error('El código debe contener solo números.');
-  return normalizedToken;
-}
-
-export async function verifyEmailCode(email: string, token: string): Promise<Session> {
-  const normalizedEmail = normalizeEmail(email);
-  const normalizedToken = normalizeEmailOtpToken(token);
-  const { data, error } = await requireClient().auth.verifyOtp({
-    email: normalizedEmail,
-    token: normalizedToken,
-    type: 'email',
-  });
-  if (error) throw error;
-  if (!data.session) throw new Error('Supabase no devolvió una sesión para este código.');
-  cachedSession = data.session;
-  return data.session;
-}
-
 export async function getCurrentSession(): Promise<Session | null> {
   if (cachedSession !== undefined) return cachedSession;
   if (sessionRequest) return sessionRequest;

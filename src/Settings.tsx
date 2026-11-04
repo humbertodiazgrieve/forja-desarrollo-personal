@@ -23,7 +23,6 @@ import {
   getCurrentSession,
   isSupabaseAuthConfigured,
   requestMagicLink,
-  verifyEmailCode,
   signOut,
   subscribeToAuthChanges,
 } from './supabase-auth';
@@ -55,8 +54,7 @@ export function Settings(p: PageProps & { autoSync: AutoSyncState }) {
     [authBusy, setAuthBusy] = useState(false),
     [authMessage, setAuthMessage] = useState(''),
     [authError, setAuthError] = useState(''),
-    [authCode, setAuthCode] = useState(''),
-    [authCodeRequested, setAuthCodeRequested] = useState(false),
+    [authLinkSent, setAuthLinkSent] = useState(false),
     [authCooldown, setAuthCooldown] = useState(0),
     [remoteState, setRemoteState] = useState<RemoteState | null>(null),
     [remoteChecked, setRemoteChecked] = useState(false),
@@ -181,7 +179,7 @@ export function Settings(p: PageProps & { autoSync: AutoSyncState }) {
   };
   const sendMagicLink = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    if (authBusy || authCodeRequested) return;
+    if (authBusy || authLinkSent) return;
     const email = authEmail.trim();
     setAuthEmail(email);
     setAuthMessage('');
@@ -194,35 +192,12 @@ export function Settings(p: PageProps & { autoSync: AutoSyncState }) {
     try {
       await requestMagicLink(email);
       if (mounted.current) {
-        setAuthCodeRequested(true);
-        setAuthCode('');
+        setAuthLinkSent(true);
         setAuthCooldown(60);
-        setAuthMessage(
-          'Revisa tu correo y vuelve aquí para introducir el código. Si el mensaje solo incluye un enlace, puedes usarlo en el navegador.',
-        );
+        setAuthMessage('Revisa tu correo y abre el enlace mágico para continuar.');
       }
     } catch (e) {
       if (mounted.current) setAuthError(`No se pudo enviar el enlace. ${String(e)}`);
-    } finally {
-      if (mounted.current) setAuthBusy(false);
-    }
-  };
-  const verifyCode = async (event: React.FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
-    if (authBusy) return;
-    setAuthMessage('');
-    setAuthError('');
-    setAuthBusy(true);
-    try {
-      const session = await verifyEmailCode(authEmail, authCode);
-      if (mounted.current) {
-        setAuthSession(session);
-        setAuthCodeRequested(false);
-        setAuthCode('');
-        setAuthMessage('Código verificado. Tu sesión está activa.');
-      }
-    } catch (e) {
-      if (mounted.current) setAuthError(`Código inválido o caducado. ${String(e)}`);
     } finally {
       if (mounted.current) setAuthBusy(false);
     }
@@ -241,9 +216,7 @@ export function Settings(p: PageProps & { autoSync: AutoSyncState }) {
       await requestMagicLink(email);
       if (mounted.current) {
         setAuthCooldown(60);
-        setAuthMessage(
-          'Solicitamos un correo nuevo. Usa el enlace o el código del mensaje más reciente.',
-        );
+        setAuthMessage('Solicitamos un enlace nuevo. Usa el enlace más reciente para continuar.');
       }
     } catch (e) {
       if (mounted.current) setAuthError(`No se pudo reenviar el correo. ${String(e)}`);
@@ -252,8 +225,7 @@ export function Settings(p: PageProps & { autoSync: AutoSyncState }) {
     }
   };
   const changeAuthEmail = () => {
-    setAuthCodeRequested(false);
-    setAuthCode('');
+    setAuthLinkSent(false);
     setAuthCooldown(0);
     setAuthMessage('');
     setAuthError('');
@@ -387,8 +359,8 @@ export function Settings(p: PageProps & { autoSync: AutoSyncState }) {
               <Badge className="green">CUENTA SUPABASE</Badge>
             </div>
             <p>
-              Puedes usar un enlace mágico o un código de un solo uso para reconocer tu cuenta. Tus
-              datos siguen guardándose localmente mientras la sincronización remota no esté activa.
+              Puedes recibir un enlace mágico para reconocer tu cuenta. Tus datos siguen guardándose
+              localmente mientras la sincronización remota no esté activa.
             </p>
             {authLoading ? (
               <p aria-live="polite">Comprobando tu sesión...</p>
@@ -419,62 +391,34 @@ export function Settings(p: PageProps & { autoSync: AutoSyncState }) {
                       type="email"
                       autoComplete="email"
                       value={authEmail}
-                      disabled={authBusy || authCodeRequested}
+                      disabled={authBusy || authLinkSent}
                       onChange={(e) => setAuthEmail(e.target.value)}
                       placeholder="tu@email.com"
                     />
                   </Field>
-                  <button
-                    className="secondary"
-                    type="submit"
-                    disabled={authBusy || authCodeRequested}
-                  >
+                  <button className="secondary" type="submit" disabled={authBusy || authLinkSent}>
                     <Mail size={16} /> {authBusy ? 'Enviando enlace...' : 'Enviar enlace mágico'}
                   </button>
                 </form>
-                {authCodeRequested && (
-                  <form onSubmit={verifyCode}>
-                    <Field
-                      label="Código del correo"
-                      hint="Escribe el código numérico del correo más reciente."
+                {authLinkSent && (
+                  <div className="button-row">
+                    <button
+                      type="button"
+                      className="text-button"
+                      disabled={authBusy || authCooldown > 0}
+                      onClick={resendMagicLink}
                     >
-                      <input
-                        id="supabase-email-code"
-                        inputMode="numeric"
-                        autoComplete="one-time-code"
-                        value={authCode}
-                        disabled={authBusy}
-                        onChange={(e) => setAuthCode(e.target.value)}
-                        placeholder="Código"
-                      />
-                    </Field>
-                    <div className="button-row">
-                      <button
-                        className="secondary"
-                        type="submit"
-                        disabled={authBusy || !authCode.trim()}
-                      >
-                        <KeyRound size={16} />{' '}
-                        {authBusy ? 'Verificando código...' : 'Verificar código'}
-                      </button>
-                      <button
-                        type="button"
-                        className="text-button"
-                        disabled={authBusy || authCooldown > 0}
-                        onClick={resendMagicLink}
-                      >
-                        {authCooldown > 0 ? `Reenviar en ${authCooldown}s` : 'Reenviar correo'}
-                      </button>
-                      <button
-                        type="button"
-                        className="text-button"
-                        disabled={authBusy}
-                        onClick={changeAuthEmail}
-                      >
-                        Cambiar email
-                      </button>
-                    </div>
-                  </form>
+                      {authCooldown > 0 ? 'Reenviar en ' + authCooldown + 's' : 'Reenviar enlace'}
+                    </button>
+                    <button
+                      type="button"
+                      className="text-button"
+                      disabled={authBusy}
+                      onClick={changeAuthEmail}
+                    >
+                      Cambiar email
+                    </button>
+                  </div>
                 )}
               </>
             )}

@@ -1,13 +1,13 @@
 import { test, expect } from '@playwright/test';
 import { initialState } from '../src/domain';
 
-test('verifica código de correo con reintento y conserva la sesión al recargar', async ({
+test('signs in through the email magic link and keeps the session after reload', async ({
   page,
   context,
 }) => {
   const user = {
     id: '22222222-2222-4222-8222-222222222222',
-    email: 'code-fixture@example.test',
+    email: 'magic-link-fixture@example.test',
     aud: 'authenticated',
     role: 'authenticated',
     app_metadata: {},
@@ -16,17 +16,14 @@ test('verifica código de correo con reintento y conserva la sesión al recargar
   };
   const expiresAt = Math.floor(Date.now() / 1000) + 3600;
   const encode = (value: unknown) => Buffer.from(JSON.stringify(value)).toString('base64url');
-  const session = {
-    access_token: `${encode({ alg: 'HS256', typ: 'JWT' })}.${encode({ sub: user.id, exp: expiresAt, role: 'authenticated' })}.Zml4dHVyZQ`,
-    refresh_token: 'fixture-refresh-token',
-    token_type: 'bearer',
-    expires_in: 3600,
-    expires_at: expiresAt,
-    user,
+  const accessToken = `${encode({ alg: 'HS256', typ: 'JWT' })}.${encode({ sub: user.id, exp: expiresAt, role: 'authenticated' })}.Zml4dHVyZQ`;
+  const localState = {
+    ...initialState('2026-09-14'),
+    onboarded: true,
+    records: { '2026-09-15': { strength: 1 } },
   };
   const unexpected: string[] = [];
-  let otpRequests = 0;
-  let verifyRequests = 0;
+  let linkRequests = 0;
   let remoteState: unknown = null;
   let remoteRevision = 0;
 
@@ -38,28 +35,19 @@ test('verifica código de correo con reintento y conserva la sesión al recargar
       return route.fulfill({ status: 503, body: 'External request blocked by fixture' });
     }
     if (url.pathname === '/auth/v1/otp' && route.request().method() === 'POST') {
-      otpRequests++;
+      linkRequests++;
       return route.fulfill({ status: 200, json: {} });
     }
-    if (url.pathname === '/auth/v1/verify' && route.request().method() === 'POST') {
-      verifyRequests++;
-      const body = route.request().postDataJSON() as { token?: string };
-      if (body.token !== '12345678')
-        return route.fulfill({
-          status: 400,
-          json: { error: 'invalid_token', error_description: 'Token has expired or is invalid' },
-        });
-      return route.fulfill({
-        status: 200,
-        json: {
-          access_token: session.access_token,
-          token_type: 'bearer',
-          expires_in: session.expires_in,
-          expires_at: session.expires_at,
-          refresh_token: session.refresh_token,
-          user,
-        },
-      });
+    if (url.pathname === '/auth/v1/verify' && route.request().method() === 'GET') {
+      const callback = new URL(url.searchParams.get('redirect_to') ?? 'http://127.0.0.1:1421/');
+      callback.hash = new URLSearchParams({
+        access_token: accessToken,
+        refresh_token: 'fixture-refresh-token',
+        token_type: 'bearer',
+        expires_in: '3600',
+        type: 'magiclink',
+      }).toString();
+      return route.fulfill({ status: 302, headers: { location: callback.toString() } });
     }
     if (url.pathname === '/auth/v1/user' && route.request().method() === 'GET')
       return route.fulfill({ status: 200, json: user });
@@ -96,42 +84,47 @@ test('verifica código de correo con reintento y conserva la sesión al recargar
     return route.fulfill({ status: 503, body: 'Unmocked Supabase request blocked' });
   });
   await context.routeWebSocket('**/*', (socket) => socket.close());
-  await context.addInitScript(
-    (state) => {
+  await context.addInitScript((state) => {
+    if (!localStorage.getItem('forja-preview-v1'))
       localStorage.setItem('forja-preview-v1', JSON.stringify(state));
-    },
-    { ...initialState('2026-09-14'), onboarded: true },
-  );
+  }, localState);
 
   await page.goto('/');
   await page.getByRole('button', { name: 'Ajustes', exact: true }).click();
   await expect(page.getByRole('heading', { name: 'Acceso opcional' })).toBeVisible();
   const email = page.getByLabel('Email');
-  await email.fill(' code-fixture@example.test ');
+  await email.fill(' magic-link-fixture@example.test ');
   await page.getByRole('button', { name: 'Enviar enlace mágico', exact: true }).click();
-  await expect.poll(() => otpRequests).toBe(1);
+  await expect.poll(() => linkRequests).toBe(1);
   await expect(
-    page.getByText('Revisa tu correo y vuelve aquí para introducir el código.'),
+    page.getByText('Revisa tu correo y abre el enlace mágico para continuar.'),
   ).toBeVisible();
+  await expect(page.getByLabel('Código del correo')).toHaveCount(0);
+  await expect(page.getByRole('button', { name: 'Verificar código' })).toHaveCount(0);
   await page.setViewportSize({ width: 390, height: 1000 });
-  await page.screenshot({ path: 'test-results/auth-code-mobile.png' });
-  const code = page.getByLabel('Código del correo');
-  await code.fill('bad-code');
-  await page.getByRole('button', { name: 'Verificar código', exact: true }).click();
-  await expect(page.getByRole('alert')).toContainText('Código inválido o caducado');
-  expect(verifyRequests).toBe(0);
+  await page.screenshot({ path: 'test-results/auth-magic-link-mobile.png' });
 
-  await code.fill('1234567');
-  await page.getByRole('button', { name: 'Verificar código', exact: true }).click();
-  await expect(page.getByRole('alert')).toContainText('Código inválido o caducado');
-  expect(verifyRequests).toBe(1);
-
-  await code.fill('12345678');
-  await page.getByRole('button', { name: 'Verificar código', exact: true }).click();
-  await expect(page.getByText('Sesión iniciada como')).toContainText(user.email);
-  expect(verifyRequests).toBe(2);
-  await page.reload();
+  await page.goto(
+    'https://forja-sync-fixture.supabase.co/auth/v1/verify?token=fixture-token&type=magiclink&redirect_to=http%3A%2F%2F127.0.0.1%3A1421%2F',
+  );
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await expect(page.getByText('Nivel 1 · 10 XP')).toBeVisible();
   await page.getByRole('button', { name: 'Ajustes', exact: true }).click();
   await expect(page.getByText('Sesión iniciada como')).toContainText(user.email);
+  await page.reload();
+  await expect(page.getByText('Nivel 1 · 10 XP')).toBeVisible();
+  await page.getByRole('button', { name: 'Ajustes', exact: true }).click();
+  await expect(page.getByText('Sesión iniciada como')).toContainText(user.email);
+  await expect
+    .poll(() =>
+      page.evaluate(
+        () =>
+          JSON.parse(localStorage.getItem('forja-preview-v1') ?? 'null').records['2026-09-15']
+            ?.strength,
+      ),
+    )
+    .toBe(1);
+  expect(linkRequests).toBe(1);
+  expect(remoteState).toEqual(localState);
   expect(unexpected).toEqual([]);
 });

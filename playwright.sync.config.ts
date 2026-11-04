@@ -2,7 +2,7 @@ import { defineConfig } from '@playwright/test';
 
 export default defineConfig({
   testDir: './e2e',
-  testMatch: /(?:sync-responsive|auth-code)\.pw\.ts/,
+  testMatch: /(?:sync-responsive|auth-magic-link)\.pw\.ts/,
   outputDir: 'test-results/sync-responsive',
   workers: 1,
   reporter: 'list',
