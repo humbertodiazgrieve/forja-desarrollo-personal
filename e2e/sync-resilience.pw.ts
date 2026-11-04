@@ -1,5 +1,5 @@
 import { test, expect, type BrowserContext } from '@playwright/test';
-import { initialState, type AppState } from '../src/domain';
+import { emptyJournal, initialState, type AppState } from '../src/domain';
 
 const origin = 'http://127.0.0.1:1421';
 const supabaseHost = 'forja-sync-fixture.supabase.co';
@@ -18,7 +18,20 @@ test('two clients preserve offline edits, converge on refresh, and stop on concu
     refresh_token: 'fixture-refresh-token', token_type: 'bearer', expires_in: 3600,
     expires_at: expiresAt, user,
   };
-  const baseline = { ...initialState('2026-09-14'), onboarded: true };
+  const historicalJournal = {
+    ...emptyJournal(),
+    body: 'Entrada histórica que debe conservarse',
+    good: 'Fui constante',
+    bad: 'Me distraje',
+    published: true,
+    clarity: 4,
+  };
+  const baseline = {
+    ...initialState('2026-09-14'),
+    onboarded: true,
+    journals: { '2026-09-20': historicalJournal },
+    records: { '2026-09-20': { journal: 1 } },
+  };
   let remoteState: unknown = null;
   let revision = 0;
   let offlineA = false;
@@ -73,20 +86,31 @@ test('two clients preserve offline edits, converge on refresh, and stop on concu
   try {
     await pageA.goto('/');
     await expect(pageA.locator('.topbar .remote-save-status')).toContainText('Sincronizado');
+    await expect(pageA.getByRole('button', { name: 'Mi diario', exact: true })).toHaveCount(0);
+    await expect(pageA.getByText('Hacer una pausa y escribir', { exact: true })).toHaveCount(0);
     expect(remoteState).toEqual(baseline);
+
+    await pageA.getByRole('button', { name: 'Misiones de hoy', exact: true }).click();
+    const journalMission = pageA.locator('.mission-card').filter({ hasText: 'Escribir en mi diario' });
+    await expect(journalMission.getByRole('button', { name: 'Sí' })).toBeVisible();
+    await expect(journalMission.getByRole('button', { name: 'No' })).toBeVisible();
+    await expect(journalMission.getByText('Abrir diario', { exact: true })).toHaveCount(0);
+    await expect(journalMission.getByText('Escribir mi diario', { exact: true })).toHaveCount(0);
+    await pageA.getByRole('button', { name: 'Mi refugio', exact: true }).click();
 
     await pageB.goto('/');
     await expect(pageB.locator('.topbar .remote-save-status')).toContainText('Sincronizado');
     await expect.poll(() => pageB.evaluate(() => JSON.parse(localStorage.getItem('forja-preview-v1') ?? 'null')?.onboarded)).toBe(true);
 
     offlineA = true;
-    await pageA.getByRole('button', { name: 'Mi diario', exact: true }).click();
-    await pageA.getByLabel('Texto libre del diario').fill('edición sin conexión');
+    await pageA.getByRole('button', { name: 'Ajustes' }).click();
+    await pageA.getByLabel('Reducir animaciones y movimiento').check();
     await expect.poll(() => pageA.evaluate(() => {
       const state = JSON.parse(localStorage.getItem('forja-preview-v1') ?? 'null') as AppState | null;
-      return Object.values(state?.journals ?? {}).some((entry) => entry.body === 'edición sin conexión');
+      return state?.reducedMotion;
     })).toBe(true);
     const offlineEdit = await pageA.evaluate(() => JSON.parse(localStorage.getItem('forja-preview-v1') ?? 'null') as AppState);
+    expect(offlineEdit.journals).toEqual(baseline.journals);
     await expect(pageA.locator('.topbar .remote-save-status')).toContainText('Error de sincronización');
     expect(remoteState).toEqual(baseline);
 
@@ -94,10 +118,12 @@ test('two clients preserve offline edits, converge on refresh, and stop on concu
     await pageA.evaluate(() => window.dispatchEvent(new Event('online')));
     await expect(pageA.locator('.topbar .remote-save-status')).toContainText('Sincronizado');
     expect(remoteState).toEqual(offlineEdit);
+    expect((remoteState as AppState).journals).toEqual(baseline.journals);
 
     await pageB.evaluate(() => window.dispatchEvent(new Event('focus')));
     await expect(pageB.locator('.topbar .remote-save-status')).toContainText('Sincronizado');
     await expect.poll(() => pageB.evaluate(() => JSON.parse(localStorage.getItem('forja-preview-v1') ?? 'null'))).toEqual(offlineEdit);
+    expect((remoteState as AppState).journals).toEqual(baseline.journals);
 
     const editA = { ...offlineEdit, model: 'concurrent edit A' };
     const editB = { ...offlineEdit, model: 'concurrent edit B' };

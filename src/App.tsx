@@ -3,7 +3,6 @@ import {
   LayoutDashboard,
   Swords,
   Map,
-  NotebookPen,
   ChartNoAxesCombined,
   Shield,
   CalendarDays,
@@ -24,7 +23,6 @@ import { desktop, loadState, readBackup, restoreBackup, saveState } from './stor
 import { Home } from './Home';
 import { Missions } from './Missions';
 import { Planning } from './Planning';
-import { Journal } from './Journal';
 import { Progress, WarriorPage } from './Progress';
 import { Calories } from './Calories';
 import { Performance } from './Performance';
@@ -37,7 +35,6 @@ const navigation = [
   { id: 'missions', label: 'Misiones de hoy', icon: Swords },
   { id: 'calories', label: 'Calorías', icon: Flame },
   { id: 'planning', label: 'Planificación', icon: Map },
-  { id: 'journal', label: 'Mi diario', icon: NotebookPen },
   { id: 'progress', label: 'Mi progreso', icon: ChartNoAxesCombined },
   { id: 'performance', label: 'Performance', icon: ChartNoAxesCombined },
 ] as const;
@@ -211,8 +208,6 @@ export default function App() {
       <Calories {...props} />
     ) : page === 'planning' ? (
       <Planning {...props} />
-    ) : page === 'journal' ? (
-      <Journal key={date} {...props} />
     ) : page === 'progress' ? (
       <Progress {...props} />
     ) : page === 'warrior' ? (

@@ -324,9 +324,6 @@ export function Home(p: PageProps) {
           </div>
           <p className="subtle">Claridad mental · escala del 1 al 5</p>
           <SparkChart data={data} color="#b1a2d6" small />
-          <button className="text-button" onClick={() => p.go('journal')}>
-            Hacer una pausa y escribir <ArrowRight size={15} />
-          </button>
         </>
       );
     }

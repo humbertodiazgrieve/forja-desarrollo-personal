@@ -27,7 +27,6 @@ export type Page =
   | 'missions'
   | 'calories'
   | 'planning'
-  | 'journal'
   | 'progress'
   | 'warrior'
   | 'performance'

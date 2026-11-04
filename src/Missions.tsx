@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Check, ChevronRight, Play, Pause, Flame, Plus, Pencil, RotateCcw } from 'lucide-react';
+import { Check, ChevronRight, Play, Pause, Flame, Plus, RotateCcw } from 'lucide-react';
 import {
   areaNames,
   missionValue,
@@ -122,21 +122,12 @@ export function MissionCard({
             >
               No
             </button>
-            {h.id === 'journal' && (
-              <button className="text-button" onClick={() => p.go('journal')}>
-                <Pencil size={15} /> Abrir diario
-              </button>
-            )}
           </>
         ) : h.kind === 'journal' ? (
-          <button
-            className={'mission-button ' + (done ? 'complete' : '')}
-            onClick={() => p.go('journal')}
-          >
-            {done ? <Check size={15} /> : <Pencil size={15} />}{' '}
-            {done ? 'Diario completado' : 'Escribir mi diario'}
-            <ChevronRight size={14} />
-          </button>
+          <span className={'mission-button ' + (done ? 'complete' : '')}>
+            {done ? <Check size={15} /> : null}
+            {done ? 'Diario completado' : 'Sin entrada completada'}
+          </span>
         ) : h.kind === 'session' ? (
           <button
             className={'mission-button ' + (done ? 'complete' : '')}
