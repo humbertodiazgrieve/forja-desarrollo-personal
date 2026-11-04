@@ -30,6 +30,7 @@ export type Page =
   | 'journal'
   | 'progress'
   | 'warrior'
+  | 'performance'
   | 'settings';
 export type PageProps = {
   state: AppState;

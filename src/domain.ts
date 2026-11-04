@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { validateFitnessData } from './performance/protocol';
 
 export const areaNames = { physical: 'Físico', nutrition: 'Nutrición', mental: 'Mental' } as const;
 export type Area = keyof typeof areaNames;
@@ -114,6 +115,14 @@ export const stateSchema = z.object({
       undone: z.boolean(),
     }),
   ),
+  performanceData: z.unknown().optional().superRefine((value, context) => {
+    if (value === undefined) return;
+    try {
+      validateFitnessData(value);
+    } catch (error) {
+      context.addIssue({ code: 'custom', message: error instanceof Error ? error.message : 'Copia Fitness OS no válida.' });
+    }
+  }),
 });
 export type AppState = z.infer<typeof stateSchema>;
 export const SIMPLE_MISSION_START_DATE = '2026-11-03';

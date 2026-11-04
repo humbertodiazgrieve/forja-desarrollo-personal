@@ -27,6 +27,7 @@ import { Planning } from './Planning';
 import { Journal } from './Journal';
 import { Progress, WarriorPage } from './Progress';
 import { Calories } from './Calories';
+import { Performance } from './Performance';
 import { Settings } from './Settings';
 import { useAutoSync } from './auto-sync';
 import { type Page, type PageProps, type Update } from './ui';
@@ -38,6 +39,7 @@ const navigation = [
   { id: 'planning', label: 'Planificación', icon: Map },
   { id: 'journal', label: 'Mi diario', icon: NotebookPen },
   { id: 'progress', label: 'Mi progreso', icon: ChartNoAxesCombined },
+  { id: 'performance', label: 'Performance', icon: ChartNoAxesCombined },
 ] as const;
 export default function App() {
   const [state, setState] = useState<AppState | null>(null),
@@ -215,6 +217,8 @@ export default function App() {
       <Progress {...props} />
     ) : page === 'warrior' ? (
       <WarriorPage {...props} />
+    ) : page === 'performance' ? (
+      <Performance {...props} />
     ) : page === 'settings' ? (
       <Settings {...props} autoSync={autoSync} />
     ) : (

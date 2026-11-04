@@ -3032,3 +3032,56 @@ dialog::backdrop {
     display: block;
   }
 }
+.performance-page {
+  display: grid;
+  gap: 18px;
+}
+
+.performance-heading {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 18px;
+  padding: 20px 22px;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  background: var(--panel);
+}
+
+.performance-heading p,
+.performance-heading span {
+  color: var(--muted);
+}
+
+.performance-heading p {
+  margin: 0 0 5px;
+  font-size: 11px;
+  letter-spacing: 1.4px;
+}
+
+.performance-heading h1 {
+  margin: 0;
+}
+
+.performance-local {
+  font-size: 12px;
+}
+
+.performance-frame {
+  width: 100%;
+  min-height: min(86vh, 1050px);
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  background: #101310;
+}
+
+@media (max-width: 650px) {
+  .performance-heading {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .performance-frame {
+    min-height: 84vh;
+  }
+}

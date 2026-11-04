@@ -1,4 +1,4 @@
-const CACHE_NAME = 'forja-shell-v1';
+const CACHE_NAME = 'forja-shell-v2';
 const SHELL_ASSETS = ['/', '/index.html', '/manifest.webmanifest', '/mark.svg'];
 const PROTECTED_PATH = /\/(?:auth|rest|functions)(?:\/|$)/;
 const SENSITIVE_QUERY = /^(?:access_token|refresh_token|token|code|apikey)$/i;
@@ -30,24 +30,50 @@ function isExcluded(url) {
 function isStaticAsset(request, url) {
   return (
     SHELL_ASSETS.includes(url.pathname) ||
+    url.pathname.startsWith('/performance/') ||
     ['script', 'style', 'image', 'font', 'manifest'].includes(request.destination)
   );
 }
 
 async function networkFirstNavigation(request) {
+  const url = new URL(request.url);
   try {
     const response = await fetch(request);
     if (response.ok) {
       const cache = await caches.open(CACHE_NAME);
-      await cache.put('/index.html', response.clone());
+      if (url.pathname === '/' || url.pathname === '/index.html') {
+        await cache.put('/index.html', response.clone());
+      } else if (url.pathname.startsWith('/performance/')) {
+        await cache.put(request, response.clone());
+      }
     }
     return response;
   } catch {
-    return (await caches.match(request)) || caches.match('/index.html');
+    const cached = await caches.match(request);
+    if (cached) return cached;
+    if (url.pathname === '/' || url.pathname === '/index.html') return caches.match('/index.html');
+    return new Response('Esta página no está disponible sin conexión.', {
+      status: 503,
+      headers: { 'Content-Type': 'text/plain; charset=utf-8' },
+    });
   }
 }
 
 async function cacheFirst(request) {
+  if (new URL(request.url).pathname.startsWith('/performance/')) {
+    try {
+      const response = await fetch(request);
+      if (response.ok) {
+        const cache = await caches.open(CACHE_NAME);
+        await cache.put(request, response.clone());
+      }
+      return response;
+    } catch {
+      const cached = await caches.match(request);
+      if (cached) return cached;
+      throw Error('El recurso de Performance no está disponible sin conexión.');
+    }
+  }
   const cached = await caches.match(request);
   if (cached) return cached;
   const response = await fetch(request);
