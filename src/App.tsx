@@ -338,6 +338,14 @@ export default function App() {
               <button onClick={() => setState((s) => (s ? { ...s } : s))}>Reintentar</button>
             </div>
           )}
+          {autoSync.needsLogin && (
+            <div className="notice" role="status" aria-live="polite">
+              <span>{autoSync.message}</span>
+              <button className="text-button" onClick={() => go('settings')}>
+                Iniciar sesión
+              </button>
+            </div>
+          )}
           {screen}
           <footer className="page-footer">
             <span>FORJA</span> La constancia es tu verdadero poder.<span>HECHO PARA TU CAMINO</span>

@@ -359,8 +359,8 @@ export function Settings(p: PageProps & { autoSync: AutoSyncState }) {
               <Badge className="green">CUENTA SUPABASE</Badge>
             </div>
             <p>
-              Puedes recibir un enlace mágico para reconocer tu cuenta. Tus datos siguen guardándose
-              localmente mientras la sincronización remota no esté activa.
+              Puedes recibir un enlace mágico para reconocer tu cuenta. Sin una sesión iniciada, tus
+              datos solo se guardan en este dispositivo y no se envían al servidor.
             </p>
             {authLoading ? (
               <p aria-live="polite">Comprobando tu sesión...</p>

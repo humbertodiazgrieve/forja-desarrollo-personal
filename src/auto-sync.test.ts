@@ -70,6 +70,7 @@ describe('useAutoSync lifecycle', () => {
   it('settles an initially signed-out session as disabled', async () => {
     await render(initialState('2026-09-14'));
     expect(status.status).toBe('disabled');
+    expect(status.message).toBe('Guardado solo en este dispositivo. Inicia sesión para sincronizar.');
     expect(mocks.loadRemoteState).not.toHaveBeenCalled();
   });
 

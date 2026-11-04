@@ -5,7 +5,13 @@ import { loadRemoteState, saveRemoteState } from './supabase-repository';
 import { AutoSyncEngine } from './auto-sync-engine';
 
 export type AutoSyncStatus = 'disabled' | 'checking' | 'syncing' | 'synced' | 'conflict' | 'error';
-export type AutoSyncState = { status: AutoSyncStatus; revision: number | null; message: string };
+export type AutoSyncState = {
+  status: AutoSyncStatus;
+  revision: number | null;
+  message: string;
+  needsLogin: boolean;
+};
+type SyncStatusState = Omit<AutoSyncState, 'needsLogin'>;
 
 type SyncResolutionDetail = { state: AppState; revision: number; source: 'download' | 'upload' };
 type AutoSyncOptions = {
@@ -25,12 +31,16 @@ function getBrowserStorage(): Pick<Storage, 'getItem' | 'setItem'> | undefined {
   }
 }
 
-function statusMessage(status: AutoSyncStatus): string {
+function statusMessage(status: AutoSyncStatus, configured = false): string {
   if (status === 'checking') return 'Comprobando sincronización';
   if (status === 'syncing') return 'Sincronizando';
   if (status === 'synced') return 'Sincronizado';
   if (status === 'conflict') return 'Conflicto remoto';
   if (status === 'error') return 'Error de sincronización';
+  if (status === 'disabled')
+    return configured
+      ? 'Guardado solo en este dispositivo. Inicia sesión para sincronizar.'
+      : 'Sincronización no configurada. Los datos se guardan solo en este dispositivo.';
   return '';
 }
 
@@ -47,10 +57,10 @@ export function markAutoSyncResolved(
 
 export function useAutoSync({ state, setState, notify }: AutoSyncOptions): AutoSyncState {
   const configured = isSupabaseAuthConfigured();
-  const [sync, setSync] = useState<AutoSyncState>({
+  const [sync, setSync] = useState<SyncStatusState>({
     status: configured ? 'checking' : 'disabled',
     revision: null,
-    message: statusMessage(configured ? 'checking' : 'disabled'),
+    message: statusMessage(configured ? 'checking' : 'disabled', configured),
   });
   const mounted = useRef(false);
   const setStateRef = useRef(setState);
@@ -96,7 +106,11 @@ export function useAutoSync({ state, setState, notify }: AutoSyncOptions): AutoS
       knownUserId = nextUserId;
       engine.setUser(nextUserId);
       if (!nextUserId && mounted.current)
-        setSync({ status: 'disabled', revision: null, message: '' });
+        setSync({
+          status: 'disabled',
+          revision: null,
+          message: statusMessage('disabled', configured),
+        });
     };
     let unsubscribe = () => {};
     try {
@@ -145,5 +159,5 @@ export function useAutoSync({ state, setState, notify }: AutoSyncOptions): AutoS
     return () => window.removeEventListener(RESOLUTION_EVENT, resolve);
   }, [engine]);
 
-  return sync;
+  return { ...sync, needsLogin: configured && sync.status === 'disabled' };
 }

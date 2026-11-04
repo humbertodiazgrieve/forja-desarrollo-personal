@@ -168,6 +168,141 @@ describe('AutoSyncEngine', () => {
     expect(status).toHaveBeenLastCalledWith('synced', 2);
   });
 
+  it('restores checkpointed history when local storage has reset to the initial state', async () => {
+    const storage = makeStorage();
+    const checkpointed = {
+      ...initialState('2026-09-14'),
+      onboarded: true,
+      records: { '2026-09-20': { strength: 1 } },
+    };
+    storage.setItem(
+      checkpointKey('account'),
+      JSON.stringify({ state: checkpointed, revision: 4 }),
+    );
+    const applyRemote = vi.fn();
+    const saveRemote = vi.fn();
+    const engine = new AutoSyncEngine({
+      loadRemote: vi.fn().mockResolvedValue(makeRemote(checkpointed, 4)),
+      saveRemote,
+      applyRemote,
+      onStatus: vi.fn(),
+      storage,
+    });
+    engine.setLocalState(initialState('2026-09-14'));
+    engine.setUser('account');
+    await flush();
+
+    expect(applyRemote).toHaveBeenCalledWith(checkpointed);
+    expect(saveRemote).not.toHaveBeenCalled();
+  });
+
+  it('conflicts instead of replacing active local history with an empty remote state', async () => {
+    const baseline = {
+      ...initialState('2026-09-14'),
+      onboarded: true,
+      records: { '2026-09-20': { strength: 1 } },
+    };
+    let remote = makeRemote(baseline, 4);
+    const applyRemote = vi.fn();
+    const saveRemote = vi.fn();
+    const onStatus = vi.fn();
+    const engine = new AutoSyncEngine({
+      loadRemote: vi.fn(async () => remote),
+      saveRemote,
+      applyRemote,
+      onStatus,
+      storage: makeStorage(),
+    });
+    engine.setLocalState(baseline);
+    engine.setUser('account');
+    await flush();
+
+    remote = makeRemote(initialState('2026-09-14'), 5);
+    engine.refresh();
+    await flush();
+
+    expect(onStatus).toHaveBeenLastCalledWith('conflict', 5);
+    expect(applyRemote).not.toHaveBeenCalled();
+    expect(saveRemote).not.toHaveBeenCalled();
+  });
+
+  it('keeps a checkpoint and conflicts when the remote history is empty or partial', async () => {
+    const checkpointed = {
+      ...initialState('2026-09-14'),
+      onboarded: true,
+      records: {
+        '2026-09-20': { strength: 1, cardio: 1 },
+        '2026-09-21': { strength: 1 },
+      },
+    };
+    const empty = initialState('2026-09-14');
+    for (const [local, degraded] of [
+      [empty, empty],
+      [
+        initialState('2026-09-14'),
+        { ...checkpointed, records: { '2026-09-20': { strength: 1 } } },
+      ],
+    ] as const) {
+      const storage = makeStorage();
+      const rawCheckpoint = JSON.stringify({ state: checkpointed, revision: 4 });
+      storage.setItem(checkpointKey('account'), rawCheckpoint);
+      const applyRemote = vi.fn();
+      const saveRemote = vi.fn();
+      const onStatus = vi.fn();
+      const engine = new AutoSyncEngine({
+        loadRemote: vi.fn().mockResolvedValue(makeRemote(degraded, 5)),
+        saveRemote,
+        applyRemote,
+        onStatus,
+        storage,
+      });
+      engine.setLocalState(local);
+      engine.setUser('account');
+      await flush();
+
+      expect(onStatus).toHaveBeenLastCalledWith('conflict', 5);
+      expect(applyRemote).not.toHaveBeenCalled();
+      expect(saveRemote).not.toHaveBeenCalled();
+      expect(storage.getItem(checkpointKey('account'))).toBe(rawCheckpoint);
+      engine.stop();
+    }
+  });
+
+  it('conflicts before uploading local edits that remove checkpointed history', async () => {
+    const baseline = {
+      ...initialState('2026-09-14'),
+      onboarded: true,
+      records: {
+        '2026-09-20': { strength: 1, cardio: 1 },
+        '2026-09-21': { strength: 1 },
+      },
+    };
+    const reduced = { ...baseline, records: { '2026-09-20': { strength: 1 } } };
+    const storage = makeStorage();
+    storage.setItem(checkpointKey('account'), JSON.stringify({ state: baseline, revision: 4 }));
+    const saveRemote = vi.fn();
+    const applyRemote = vi.fn();
+    const onStatus = vi.fn();
+    const engine = new AutoSyncEngine({
+      loadRemote: vi.fn().mockResolvedValue(makeRemote(baseline, 4)),
+      saveRemote,
+      applyRemote,
+      onStatus,
+      storage,
+    });
+    engine.setLocalState(baseline);
+    engine.setUser('account');
+    await flush();
+    engine.setLocalState(reduced);
+    engine.refresh();
+    await flush();
+
+    expect(onStatus).toHaveBeenLastCalledWith('conflict', 4);
+    expect(saveRemote).not.toHaveBeenCalled();
+    expect(applyRemote).not.toHaveBeenCalled();
+    expect(JSON.parse(storage.getItem(checkpointKey('account'))!).state).toEqual(baseline);
+  });
+
   it('keeps two divergent nondefault states in explicit conflict without a checkpoint', async () => {
     const local = { ...initialState('2026-09-14'), onboarded: true };
     const remote = { ...local, records: { '2026-09-20': { cardio: 1 } } };

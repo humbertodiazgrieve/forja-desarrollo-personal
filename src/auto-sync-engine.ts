@@ -36,6 +36,38 @@ function isDefaultState(state: AppState): boolean {
   return serialize(withoutGeneratedIds(state)) === serialize(withoutGeneratedIds(initialState(state.cycleStart)));
 }
 
+function hasHistoryLoss(previous: AppState, next: AppState): boolean {
+  const losesRecord = Object.entries(previous.records).some(([date, activities]) => {
+    const nextActivities = next.records[date];
+    return !nextActivities || Object.keys(activities).some((id) => !(id in nextActivities));
+  });
+  const losesJournal = Object.keys(previous.journals).some((date) => !(date in next.journals));
+  const losesMeasurement = previous.measurements.some(
+    (measurement) => !next.measurements.some((candidate) => candidate.id === measurement.id),
+  );
+  const losesReview = previous.reviews.some(
+    (review) => !next.reviews.some((candidate) => candidate.id === review.id),
+  );
+  const losesDatedValues = (
+    before: Record<string, number> | undefined,
+    after: Record<string, number> | undefined,
+  ) =>
+    Object.keys(before ?? {}).some((date) => !(date in (after ?? {})));
+  const losesMilestone = Object.entries(previous.milestones).some(([group, values]) => {
+    const nextValues = next.milestones[group];
+    return !nextValues || Object.keys(values).some((key) => !(key in nextValues));
+  });
+  return (
+    losesRecord ||
+    losesJournal ||
+    losesMeasurement ||
+    losesReview ||
+    losesDatedValues(previous.calorieExpenditure, next.calorieExpenditure) ||
+    losesDatedValues(previous.calorieMaintenance, next.calorieMaintenance) ||
+    losesMilestone
+  );
+}
+
 export function checkpointKey(userId: string): string {
   return `${CHECKPOINT_PREFIX}${encodeURIComponent(userId)}`;
 }
@@ -159,6 +191,21 @@ export class AutoSyncEngine {
           this.setConflict('Los datos remotos ya no están disponibles. Revisa Ajustes antes de continuar.');
           return;
         }
+        const baselineState = this.baseline ? validateState(JSON.parse(this.baseline)) : null;
+        if (baselineState && hasHistoryLoss(baselineState, remote.state)) {
+          this.raiseConflict(
+            remote,
+            'La copia remota parece haber perdido historial. Revisa Ajustes antes de continuar.',
+          );
+          return;
+        }
+        if (baselineState && hasHistoryLoss(baselineState, local)) {
+          this.raiseConflict(
+            remote,
+            'El estado local parece haber perdido historial. Revisa Ajustes antes de continuar.',
+          );
+          return;
+        }
         const remoteChanged = serialize(remote.state) !== this.baseline;
         if (serialize(local) === serialize(remote.state)) {
           this.accept(remote.state, remote.revision);
@@ -178,13 +225,31 @@ export class AutoSyncEngine {
 
       if (!this.initialized) {
         const checkpoint = this.readCheckpoint(userId);
+        if (remote && checkpoint && hasHistoryLoss(checkpoint.state, remote.state)) {
+          this.raiseConflict(
+            remote,
+            'La copia remota parece haber perdido historial. Revisa Ajustes antes de continuar.',
+          );
+          return;
+        }
         if (remote && serialize(local) === serialize(remote.state)) {
           this.accept(remote.state, remote.revision);
           return;
         }
         if (remote && checkpoint) {
+          if (!isDefaultState(local) && hasHistoryLoss(checkpoint.state, local)) {
+            this.raiseConflict(
+              remote,
+              'El estado local parece haber perdido historial. Revisa Ajustes antes de continuar.',
+            );
+            return;
+          }
           const localChanged = serialize(local) !== serialize(checkpoint.state);
           const remoteChanged = serialize(remote.state) !== serialize(checkpoint.state);
+          if (isDefaultState(local) && !isDefaultState(checkpoint.state)) {
+            this.accept(remote.state, remote.revision);
+            return;
+          }
           if (!localChanged && remoteChanged) {
             this.accept(remote.state, remote.revision);
             return;
