@@ -9,8 +9,10 @@ import {
   emptyJournal,
   habitsAt,
   initialState,
+  isSimpleMissionAt,
   isDone,
   missionsAt,
+  missionsForDisplayAt,
   monthPeriods,
   ruleSuggestions,
   recordedCalorieBalance,
@@ -113,6 +115,69 @@ describe('Calendario y planificación', () => {
   });
 });
 describe('Registros y recompensas', () => {
+  it('retira agua y proteína de las misiones visibles sin perder XP del corte', () => {
+    const state = initialState('2026-10-01');
+    const water = state.habits.find((habit) => habit.id === 'water')!;
+    const updated = addVersion(state, { ...water, target: 2 }, '2026-11-01');
+    const cutoff = '2026-11-03';
+    updated.records['2026-11-02'] = { water: 2, protein: 1 };
+    updated.records[cutoff] = { water: 2, protein: 1 };
+    const xpBeforeCutoff = totalXp(updated, cutoff);
+
+    expect(missionsAt(updated, '2026-11-02').map((habit) => habit.id)).toContain('water');
+    expect(missionsAt(updated, cutoff).map((habit) => habit.id)).not.toContain('water');
+    expect(missionsAt(updated, cutoff).map((habit) => habit.id)).not.toContain('protein');
+    expect(completedMissionsAt(updated, cutoff).map((habit) => habit.id)).toEqual(
+      expect.arrayContaining(['water', 'protein']),
+    );
+    expect(missionsForDisplayAt(updated, cutoff).map((habit) => habit.id)).not.toEqual(
+      expect.arrayContaining(['water', 'protein']),
+    );
+    expect(totalXp(updated, cutoff)).toBe(xpBeforeCutoff);
+    expect(completion(updated, cutoff, cutoff).percent).toBeLessThanOrEqual(100);
+  });
+
+  it('usa controles binarios desde el corte y conserva el criterio histórico antes', () => {
+    const state = initialState('2026-10-01');
+    const reading = state.habits.find((habit) => habit.id === 'reading')!;
+    const meditation = state.habits.find((habit) => habit.id === 'meditation')!;
+
+    expect(isSimpleMissionAt(reading, '2026-11-02')).toBe(false);
+    expect(isSimpleMissionAt(reading, '2026-11-03')).toBe(true);
+    expect(isSimpleMissionAt(meditation, '2026-11-03')).toBe(true);
+    state.records['2026-11-03'] = { reading: reading.target, meditation: 0 };
+    expect(isDone(state, reading, '2026-11-03')).toBe(true);
+    expect(isDone(state, meditation, '2026-11-03')).toBe(false);
+    expect(totalXp(state, '2026-11-03')).toBe(10);
+  });
+
+  it('el No del diario prevalece sin borrar la entrada publicada ni alterar XP anterior', () => {
+    const state = initialState('2026-10-01');
+    const journal = state.habits.find((habit) => habit.id === 'journal')!;
+    state.journals['2026-11-02'] = {
+      ...emptyJournal(),
+      published: true,
+      good: 'Avancé',
+      bad: 'Me distraje',
+    };
+    state.journals['2026-11-03'] = {
+      ...emptyJournal(),
+      published: true,
+      good: 'Avancé',
+      bad: 'Me distraje',
+    };
+    state.records['2026-11-02'] = { journal: 0 };
+    expect(totalXp(state, '2026-11-03')).toBe(20);
+    expect(isDone(state, journal, '2026-11-02')).toBe(true);
+    state.records['2026-11-03'] = { journal: 0 };
+    expect(isSimpleMissionAt(journal, '2026-11-03')).toBe(true);
+    expect(isDone(state, journal, '2026-11-03')).toBe(false);
+    expect(state.journals['2026-11-03'].published).toBe(true);
+    expect(totalXp(state, '2026-11-03')).toBe(10);
+    state.records['2026-11-03'].journal = 1;
+    expect(isDone(state, journal, '2026-11-03')).toBe(true);
+  });
+
   it('conserva un cumplimiento si después se cambia retroactivamente el día', () => {
     let s = initialState(monday);
     const strength = habitsAt(s, monday).find((h) => h.id === 'strength')!;

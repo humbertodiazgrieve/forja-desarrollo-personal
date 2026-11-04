@@ -116,6 +116,9 @@ export const stateSchema = z.object({
   ),
 });
 export type AppState = z.infer<typeof stateSchema>;
+export const SIMPLE_MISSION_START_DATE = '2026-11-03';
+const retiredDailyMissionIds = new Set(['water', 'protein']);
+
 export function localDate(d = new Date()) {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 }
@@ -272,7 +275,17 @@ export function habitsAt(s: AppState, date: string): Habit[] {
   return [...m.values()].filter((h) => h.enabled);
 }
 export function missionsAt(s: AppState, date: string) {
-  return habitsAt(s, date).filter((h) => h.days.includes(asDate(date).getDay()));
+  return habitsAt(s, date).filter(
+    (h) =>
+      h.days.includes(asDate(date).getDay()) &&
+      !(date >= SIMPLE_MISSION_START_DATE && retiredDailyMissionIds.has(h.id)),
+  );
+}
+export function isSimpleMissionAt(h: Habit, date: string) {
+  return (
+    date >= SIMPLE_MISSION_START_DATE &&
+    ['reading', 'meditation', 'journal'].includes(h.id)
+  );
 }
 function plannedHabitVersionsAt(s: AppState, id: string, date: string) {
   const weekday = asDate(date).getDay();
@@ -287,6 +300,8 @@ function plannedHabitVersionsAt(s: AppState, id: string, date: string) {
 }
 export function isDone(s: AppState, h: Habit, date: string) {
   if (h.kind === 'journal') {
+    const response = s.records[date]?.[h.id];
+    if (date >= SIMPLE_MISSION_START_DATE && response !== undefined) return response >= h.target;
     const j = s.journals[date];
     return !!(j?.published && j.good.trim() && j.bad.trim());
   }
@@ -315,6 +330,11 @@ export function missionsWithHistoryAt(s: AppState, date: string) {
   const byId = new Map(missionsAt(s, date).map((h) => [h.id, h]));
   completedMissionsAt(s, date).forEach((h) => byId.set(h.id, h));
   return [...byId.values()];
+}
+export function missionsForDisplayAt(s: AppState, date: string) {
+  return missionsWithHistoryAt(s, date).filter(
+    (h) => !(date >= SIMPLE_MISSION_START_DATE && retiredDailyMissionIds.has(h.id)),
+  );
 }
 export function missionValue(s: AppState, h: Habit, date: string) {
   return h.kind === 'journal' ? (isDone(s, h, date) ? 1 : 0) : (s.records[date]?.[h.id] ?? 0);

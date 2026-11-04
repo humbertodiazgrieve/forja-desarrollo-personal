@@ -4,7 +4,8 @@ import {
   areaNames,
   missionValue,
   isDone,
-  missionsWithHistoryAt,
+  isSimpleMissionAt,
+  missionsForDisplayAt,
   streak,
   localDate,
   type Habit,
@@ -18,10 +19,11 @@ export function MissionCard({
 }: PageProps & { habit: Habit; compact?: boolean }) {
   const value = missionValue(p.state, h, p.date),
     done = isDone(p.state, h, p.date),
+    simpleMission = isSimpleMissionAt(h, p.date),
     [edit, setEdit] = useState(false),
     [amount, setAmount] = useState(String(value));
   const timerKey = `forja-timer-${p.date}-${h.id}`;
-  const [timer, setTimer] = useState<Timer | null>(() => {
+  const [storedTimer, setTimer] = useState<Timer | null>(() => {
       try {
         return JSON.parse(localStorage.getItem(timerKey) || 'null');
       } catch {
@@ -29,6 +31,7 @@ export function MissionCard({
       }
     }),
     [now, setNow] = useState(Date.now());
+  const timer = simpleMission ? null : storedTimer;
   const write = (n: number) => {
     const wasDone = done;
     p.update((s) => {
@@ -82,7 +85,9 @@ export function MissionCard({
         )}
       </div>
       <div className="mission-detail">
-        {h.kind === 'journal' ? (
+        {simpleMission ? (
+          'Marca Sí o No para esta misión'
+        ) : h.kind === 'journal' ? (
           'Una pausa para conocerte mejor'
         ) : h.kind === 'session' ? (
           'Una sesión, un paso adelante'
@@ -98,7 +103,32 @@ export function MissionCard({
         )}
       </div>
       <div className="mission-actions">
-        {h.kind === 'journal' ? (
+        {simpleMission ? (
+          <>
+            <button
+              className={'mission-button ' + (done ? 'complete' : '')}
+              aria-pressed={done}
+              onClick={() => write(h.target)}
+            >
+              {done ? <Check size={15} /> : <Plus size={15} />} Sí
+            </button>
+            <button
+              className={
+                'mission-button ' +
+                (p.state.records[p.date]?.[h.id] === 0 ? 'complete' : '')
+              }
+              aria-pressed={p.state.records[p.date]?.[h.id] === 0}
+              onClick={() => write(0)}
+            >
+              No
+            </button>
+            {h.id === 'journal' && (
+              <button className="text-button" onClick={() => p.go('journal')}>
+                <Pencil size={15} /> Abrir diario
+              </button>
+            )}
+          </>
+        ) : h.kind === 'journal' ? (
           <button
             className={'mission-button ' + (done ? 'complete' : '')}
             onClick={() => p.go('journal')}
@@ -207,7 +237,7 @@ export function MissionCard({
 }
 export function Missions(p: PageProps) {
   const [area, setArea] = useState('all');
-  const all = missionsWithHistoryAt(p.state, p.date),
+  const all = missionsForDisplayAt(p.state, p.date),
     list = all.filter((h) => area === 'all' || h.area === area);
   const completed = all.filter((h) => isDone(p.state, h, p.date)).length;
   return (
