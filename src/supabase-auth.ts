@@ -8,6 +8,7 @@ const notConfiguredMessage =
 
 let cachedSession: Session | null | undefined;
 let sessionRequest: Promise<Session | null> | null = null;
+let authStateVersion = 0;
 
 export function isSupabaseAuthConfigured(): boolean {
   return supabaseConfigured && supabase !== null;
@@ -46,12 +47,18 @@ export async function getCurrentSession(): Promise<Session | null> {
   if (sessionRequest) return sessionRequest;
 
   const client = requireClient();
+  const requestVersion = authStateVersion;
   sessionRequest = client.auth
     .getSession()
     .then(({ data, error }) => {
+      if (requestVersion !== authStateVersion) return cachedSession ?? null;
       if (error) throw error;
       cachedSession = data.session;
       return cachedSession;
+    })
+    .catch((error: unknown) => {
+      if (requestVersion !== authStateVersion) return cachedSession ?? null;
+      throw error;
     })
     .finally(() => {
       sessionRequest = null;
@@ -67,6 +74,7 @@ export async function getCurrentUser(): Promise<User | null> {
 export async function signOut(): Promise<void> {
   const { error } = await requireClient().auth.signOut();
   if (error) throw error;
+  authStateVersion++;
   cachedSession = null;
 }
 
@@ -74,6 +82,7 @@ export function subscribeToAuthChanges(handler: AuthStateHandler): () => void {
   const {
     data: { subscription },
   } = requireClient().auth.onAuthStateChange((event, session) => {
+    authStateVersion++;
     cachedSession = session;
     handler(event, session);
   });

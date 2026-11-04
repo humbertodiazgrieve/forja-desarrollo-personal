@@ -18,7 +18,7 @@
     "react": "^19.2.0",
     "react-dom": "^19.2.0",
     "recharts": "^3.8.0",
-    "zod": "^4.3.6"
+    "zod": "^4.6.7"
   },
   "devDependencies": {
     "@playwright/test": "^1.58.2",
@@ -29,7 +29,7 @@
     "jsdom": "^29.1.1",
     "prettier": "^3.9.6",
     "typescript": "^5.9.3",
-    "vite": "^7.3.1",
-    "vitest": "^4.0.18"
+    "vite": "^7.3.7",
+    "vitest": "^4.1.12"
   }
 }

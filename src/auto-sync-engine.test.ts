@@ -129,6 +129,29 @@ describe('AutoSyncEngine', () => {
     engine.stop();
   });
 
+  it('restarts an initialized engine and uploads an edit whose debounce was cleared by stop', async () => {
+    const baseline = { ...initialState('2026-09-14'), onboarded: true };
+    const server = makeFakeCas(makeRemote(baseline, 1));
+    const engine = new AutoSyncEngine({
+      loadRemote: server.load,
+      saveRemote: server.save,
+      applyRemote: vi.fn(),
+      onStatus: vi.fn(),
+    });
+    engine.setLocalState(baseline);
+    engine.setUser('account');
+    await flush();
+    vi.useFakeTimers();
+    const edit = { ...baseline, model: 'pending upload' };
+    engine.setLocalState(edit);
+    engine.stop();
+    engine.start();
+    await flush();
+
+    expect(server.read()).toEqual(makeRemote(edit, 2));
+    engine.stop();
+  });
+
   it('persists a per-user checkpoint and adopts newer remote data after reload', async () => {
     const storage = makeStorage();
     const local = { ...initialState('2026-09-14'), onboarded: true };
@@ -446,6 +469,65 @@ describe('AutoSyncEngine', () => {
     await flush();
 
     expect(onStatus).toHaveBeenLastCalledWith('conflict', 1);
+    const loadCount = loadRemote.mock.calls.length;
+    engine.refresh();
+    await flush();
+    expect(loadRemote).toHaveBeenCalledTimes(loadCount);
+  });
+
+  it('suspends after a CAS conflict when the row cannot be reloaded', async () => {
+    const baseline = { ...initialState('2026-09-14'), onboarded: true };
+    const edited = { ...baseline, model: 'write may have landed' };
+    const loadRemote = vi.fn<() => Promise<RemoteState | null>>()
+      .mockResolvedValueOnce(makeRemote(baseline, 1))
+      .mockResolvedValueOnce(makeRemote(baseline, 1))
+      .mockResolvedValueOnce(null);
+    const saveRemote = vi.fn().mockRejectedValue(new RemoteConflictError());
+    const onStatus = vi.fn();
+    const engine = new AutoSyncEngine({ loadRemote, saveRemote, applyRemote: vi.fn(), onStatus });
+    engine.setLocalState(baseline);
+    engine.setUser('account');
+    await flush();
+    engine.setLocalState(edited);
+    engine.refresh();
+    await flush();
+
+    expect(onStatus).toHaveBeenLastCalledWith('conflict', 1);
+    engine.refresh();
+    await flush();
+    expect(loadRemote).toHaveBeenCalledTimes(3);
+    expect(saveRemote).toHaveBeenCalledTimes(1);
+    engine.stop();
+  });
+
+  it('recognizes a write whose response was lost and does not upload it twice', async () => {
+    const baseline = { ...initialState('2026-09-14'), onboarded: true };
+    const edited = { ...baseline, model: 'write committed before response loss' };
+    const server = makeFakeCas(makeRemote(baseline, 1));
+    const saveRemote = vi.fn(async (state: AppState, expectedRevision: number) => {
+      const revision = await server.save(state, expectedRevision);
+      if (revision === 2) throw new Error('response lost after commit');
+      return revision;
+    });
+    const onStatus = vi.fn();
+    const engine = new AutoSyncEngine({
+      loadRemote: server.load, saveRemote, applyRemote: vi.fn(), onStatus, storage: makeStorage(),
+    });
+    engine.setLocalState(baseline);
+    engine.setUser('account');
+    await flush();
+    engine.setLocalState(edited);
+    engine.refresh();
+    await flush();
+
+    expect(server.read()).toEqual(makeRemote(edited, 2));
+    expect(onStatus).toHaveBeenLastCalledWith('error', 1);
+    engine.refresh();
+    await flush();
+    expect(server.read()).toEqual(makeRemote(edited, 2));
+    expect(saveRemote).toHaveBeenCalledTimes(1);
+    expect(onStatus).toHaveBeenLastCalledWith('synced', 2);
+    engine.stop();
   });
 
   it('refreshes a clean initialized client when the remote revision advances', async () => {

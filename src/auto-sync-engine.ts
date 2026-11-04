@@ -140,7 +140,7 @@ export class AutoSyncEngine {
 
   start() {
     this.stopped = false;
-    if (this.userId && this.latest && !this.initialized && !this.conflicted) this.requestRun(false);
+    if (this.userId && this.latest && !this.conflicted) this.requestRun(false);
   }
 
   private requestRun(debounce: boolean) {
@@ -298,7 +298,7 @@ export class AutoSyncEngine {
           this.accept(remote.state, remote.revision);
         else if (remote)
           this.raiseConflict(remote, 'Los datos remotos cambiaron en otro dispositivo. Revisa Ajustes antes de continuar.');
-        else this.dependencies.onStatus('conflict', this.revision);
+        else this.setConflict('Los datos remotos cambiaron en otro dispositivo y no se pudieron recuperar. Revisa Ajustes antes de continuar.');
       } else this.dependencies.onStatus('error', this.revision);
     }
   }

@@ -132,4 +132,77 @@ describe('useAutoSync lifecycle', () => {
     expect(status.status).toBe('synced');
     expect(mocks.loadRemoteState).toHaveBeenCalled();
   });
+
+  it('does not let a delayed initial session read replace a newer auth event', async () => {
+    let finishSession!: (session: { user: { id: string } } | null) => void;
+    mocks.getCurrentSession.mockImplementation(
+      () => new Promise((resolve) => { finishSession = resolve; }),
+    );
+    const state = initialState('2026-09-14');
+    mocks.loadRemoteState.mockResolvedValue({
+      state,
+      schemaVersion: 1,
+      revision: 4,
+      updatedAt: '2026-09-20T12:00:00Z',
+    });
+    await render(state);
+
+    await act(async () => {
+      mocks.authHandler?.('SIGNED_IN', { user: { id: 'new-user' } });
+      await Promise.resolve();
+    });
+    await act(async () => {
+      finishSession(null);
+      await Promise.resolve();
+    });
+
+    expect(status.status).toBe('synced');
+    expect(mocks.loadRemoteState).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not restore a stale signed-in session after a newer sign-out event', async () => {
+    let finishSession!: (session: { user: { id: string } } | null) => void;
+    mocks.getCurrentSession.mockImplementation(
+      () => new Promise((resolve) => { finishSession = resolve; }),
+    );
+    await render(initialState('2026-09-14'));
+
+    await act(async () => {
+      mocks.authHandler?.('SIGNED_OUT', null);
+      await Promise.resolve();
+    });
+    await act(async () => {
+      finishSession({ user: { id: 'stale-user' } });
+      await Promise.resolve();
+    });
+
+    expect(status.status).toBe('disabled');
+    expect(mocks.loadRemoteState).not.toHaveBeenCalled();
+  });
+
+  it('ignores a delayed initial session error after an auth event', async () => {
+    let failSession!: (reason: Error) => void;
+    mocks.getCurrentSession.mockImplementation(
+      () => new Promise((_resolve, reject) => { failSession = reject; }),
+    );
+    const state = initialState('2026-09-14');
+    mocks.loadRemoteState.mockResolvedValue({
+      state,
+      schemaVersion: 1,
+      revision: 4,
+      updatedAt: '2026-09-20T12:00:00Z',
+    });
+    await render(state);
+
+    await act(async () => {
+      mocks.authHandler?.('SIGNED_IN', { user: { id: 'new-user' } });
+      await Promise.resolve();
+    });
+    await act(async () => {
+      failSession(new Error('stale read failure'));
+      await Promise.resolve();
+    });
+
+    expect(status.status).toBe('synced');
+  });
 });

@@ -142,6 +142,41 @@ describe('Supabase auth service', () => {
     expect(unsubscribe).toHaveBeenCalledOnce();
   });
 
+  it('keeps a newer auth event when an earlier getSession request resolves late', async () => {
+    let finishRead!: (result: { data: { session: Session | null }; error: null }) => void;
+    mocks.auth.getSession.mockImplementation(
+      () => new Promise((resolve) => { finishRead = resolve; }),
+    );
+    const auth = await loadAuth();
+    let publish!: (event: AuthChangeEvent, value: Session | null) => void;
+    mocks.auth.onAuthStateChange.mockImplementation((callback) => {
+      publish = callback as typeof publish;
+      return { data: { subscription: { unsubscribe: vi.fn() } } };
+    });
+    auth.subscribeToAuthChanges(vi.fn());
+    const pendingRead = auth.getCurrentSession();
+    publish('SIGNED_IN', session);
+    finishRead({ data: { session: null }, error: null });
+
+    await expect(pendingRead).resolves.toEqual(session);
+    await expect(auth.getCurrentSession()).resolves.toEqual(session);
+  });
+
+  it('does not restore a session or surface an obsolete read error after sign out', async () => {
+    let failRead!: (error: Error) => void;
+    mocks.auth.getSession.mockImplementation(
+      () => new Promise((_resolve, reject) => { failRead = reject; }),
+    );
+    const auth = await loadAuth();
+    const pendingRead = auth.getCurrentSession();
+    await auth.signOut();
+    failRead(new Error('stale read failure'));
+
+    await expect(pendingRead).resolves.toBeNull();
+    await expect(auth.getCurrentSession()).resolves.toBeNull();
+    expect(mocks.auth.getSession).toHaveBeenCalledOnce();
+  });
+
   it.each([
     [
       'requestMagicLink',

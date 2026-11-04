@@ -100,6 +100,7 @@ export function useAutoSync({ state, setState, notify }: AutoSyncOptions): AutoS
     if (!configured) return;
     let active = true;
     let knownUserId: string | null | undefined;
+    let authChangeVersion = 0;
     const changeUser = (nextUserId: string | null) => {
       if (!active) return;
       if (nextUserId === knownUserId) return;
@@ -114,13 +115,18 @@ export function useAutoSync({ state, setState, notify }: AutoSyncOptions): AutoS
     };
     let unsubscribe = () => {};
     try {
-      unsubscribe = subscribeToAuthChanges((_event, session) =>
-        changeUser(session?.user.id ?? null),
-      );
+      unsubscribe = subscribeToAuthChanges((_event, session) => {
+        authChangeVersion++;
+        changeUser(session?.user.id ?? null);
+      });
+      const sessionReadVersion = authChangeVersion;
       getCurrentSession()
-        .then((session) => changeUser(session?.user.id ?? null))
+        .then((session) => {
+          if (authChangeVersion === sessionReadVersion)
+            changeUser(session?.user.id ?? null);
+        })
         .catch(() => {
-          if (active && mounted.current)
+          if (active && mounted.current && authChangeVersion === sessionReadVersion)
             setSync({ status: 'error', revision: null, message: statusMessage('error') });
         });
     } catch {
