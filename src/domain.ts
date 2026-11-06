@@ -126,7 +126,11 @@ export const stateSchema = z.object({
 });
 export type AppState = z.infer<typeof stateSchema>;
 export const SIMPLE_MISSION_START_DATE = '2026-11-03';
-const retiredDailyMissionIds = new Set(['water', 'protein']);
+const retiredDailyMissionIds = new Set(['water', 'protein', 'journal']);
+
+export function isJournalMission(habit: Pick<Habit, 'id' | 'kind'>) {
+  return habit.id === 'journal' || habit.kind === 'journal';
+}
 
 export function localDate(d = new Date()) {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
@@ -287,7 +291,7 @@ export function missionsAt(s: AppState, date: string) {
   return habitsAt(s, date).filter(
     (h) =>
       h.days.includes(asDate(date).getDay()) &&
-      !(date >= SIMPLE_MISSION_START_DATE && retiredDailyMissionIds.has(h.id)),
+      !(date >= SIMPLE_MISSION_START_DATE && (retiredDailyMissionIds.has(h.id) || isJournalMission(h))),
   );
 }
 export function isSimpleMissionAt(h: Habit, date: string) {
@@ -342,7 +346,9 @@ export function missionsWithHistoryAt(s: AppState, date: string) {
 }
 export function missionsForDisplayAt(s: AppState, date: string) {
   return missionsWithHistoryAt(s, date).filter(
-    (h) => !(date >= SIMPLE_MISSION_START_DATE && retiredDailyMissionIds.has(h.id)),
+    (h) =>
+      !isJournalMission(h) &&
+      !(date >= SIMPLE_MISSION_START_DATE && retiredDailyMissionIds.has(h.id)),
   );
 }
 export function missionValue(s: AppState, h: Habit, date: string) {

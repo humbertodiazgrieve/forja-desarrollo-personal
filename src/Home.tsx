@@ -26,6 +26,7 @@ import {
   weekStart,
   missionsAt,
   missionsWithHistoryAt,
+  isJournalMission,
   isDone,
   totalXp,
   latestMeasurement,
@@ -60,7 +61,7 @@ export function Home(p: PageProps) {
   const xp = totalXp(p.state),
     level = 1 + Math.floor(xp / 100),
     week = completion(p.state, weekStart(p.date), p.date),
-    daily = missionsAt(p.state, p.date),
+    daily = missionsAt(p.state, p.date).filter((habit) => !isJournalMission(habit)),
     completed = daily.filter((h) => isDone(p.state, h, p.date)).length;
   const planningPeriods = monthPeriods(p.state.cycleStart),
     planningMonth = selectedPeriod,
@@ -78,7 +79,13 @@ export function Home(p: PageProps) {
       value: d > visiblePeriodEnd ? null : completedMissionsAt(p.state, d).length,
     })),
     monthHabitIds = [
-      ...new Set(monthDays.flatMap((d) => missionsWithHistoryAt(p.state, d).map((h) => h.id))),
+      ...new Set(
+        monthDays.flatMap((d) =>
+          missionsWithHistoryAt(p.state, d)
+            .filter((habit) => !isJournalMission(habit))
+            .map((habit) => habit.id),
+        ),
+      ),
     ],
     monthHabits = monthHabitIds
       .map((id) =>
@@ -492,7 +499,9 @@ export function Home(p: PageProps) {
                     {h.name}
                   </strong>
                   {monthDays.map((d) => {
-                    const mission = missionsWithHistoryAt(p.state, d).find((x) => x.id === h.id);
+                    const mission = missionsWithHistoryAt(p.state, d).find(
+                      (habit) => habit.id === h.id && !isJournalMission(habit),
+                    );
                     const future = d > visiblePeriodEnd;
                     const done = !future && !!mission && isDone(p.state, mission, d);
                     return (

@@ -178,6 +178,36 @@ describe('Registros y recompensas', () => {
     expect(isDone(state, journal, '2026-11-03')).toBe(true);
   });
 
+  it('oculta misiones de diario en la lista visible y conserva historial y XP', () => {
+    const state = initialState(monday);
+    const journal = state.habits.find((habit) => habit.id === 'journal')!;
+    state.journals[monday] = {
+      ...emptyJournal(),
+      published: true,
+      good: 'Avancé',
+      bad: 'Me distraje',
+    };
+    const xpBefore = totalXp(state, monday);
+    expect(xpBefore).toBe(10);
+
+    expect(missionsForDisplayAt(state, monday).some((habit) => habit.id === 'journal')).toBe(false);
+    expect(completedMissionsAt(state, monday).some((habit) => habit.id === 'journal')).toBe(true);
+    expect(isDone(state, journal, monday)).toBe(true);
+    expect(totalXp(state, monday)).toBe(xpBefore);
+    expect(missionsAt(state, '2026-11-06').some((habit) => habit.id === 'journal')).toBe(false);
+
+    const renamedByKind = {
+      ...state,
+      habits: state.habits.map((habit) =>
+        habit.id === 'journal'
+          ? { ...habit, id: 'personal-reflection', name: 'Reflexión personalizada' }
+          : habit,
+      ),
+    };
+    expect(missionsForDisplayAt(renamedByKind, monday).some((habit) => habit.kind === 'journal')).toBe(false);
+    expect(missionsAt(renamedByKind, '2026-11-06').some((habit) => habit.kind === 'journal')).toBe(false);
+  });
+
   it('conserva un cumplimiento si después se cambia retroactivamente el día', () => {
     let s = initialState(monday);
     const strength = habitsAt(s, monday).find((h) => h.id === 'strength')!;

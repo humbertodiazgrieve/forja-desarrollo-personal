@@ -8,6 +8,7 @@ import {
   datesBetween,
   formatDate,
   habitsAt,
+  isJournalMission,
   localDate,
   missionsAt,
   monthPeriods,
@@ -32,7 +33,8 @@ export function Planning(p: PageProps) {
   const period = periods[selectedMonth],
     referenceDate =
       p.date < period.start ? period.start : p.date > period.end ? period.end : p.date,
-    schedule = habitsAt(p.state, referenceDate);
+    schedule = habitsAt(p.state, referenceDate).filter((habit) => !isJournalMission(habit)),
+    visibleHistory = p.state.habits.slice(8).filter((habit) => !isJournalMission(habit));
   const openHabit = (h: Habit, monthly = false) => {
     setEditHabit(structuredClone(h));
     setFrom(monthly ? period.start : h.effectiveFrom);
@@ -237,14 +239,13 @@ export function Planning(p: PageProps) {
       <section className="panel">
         <div className="section-title">
           <h2>Historial de programación</h2>
-          <Badge>{p.state.habits.length - 8} ajustes</Badge>
+          <Badge>{visibleHistory.length} ajustes</Badge>
         </div>
-        {p.state.habits.length <= 8 ? (
+        {visibleHistory.length === 0 ? (
           <p className="subtle">Aquí aparecerán los cambios con sus fechas de vigencia.</p>
         ) : (
           <div className="history-list">
-            {p.state.habits
-              .slice(8)
+            {visibleHistory
               .reverse()
               .map((h) => (
                 <div key={h.versionId}>

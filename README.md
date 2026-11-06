@@ -15,7 +15,7 @@ Aplicación personal para Windows, en español. Construida con Tauri 2, React, T
 
 - Trimestres móviles de tres meses con selector de fecha; tres períodos mensuales con hitos físicos editables y totales de hábitos según la programación real.
 - Peso: 88 → 83 kg. Grasa corporal: 23 → 15 kg. Grasa visceral según tu báscula: 10 → 7.
-- Fuerza cuatro veces por semana, cardio tres, referencia de 1500 kcal, tres litros de agua, un scoop de proteína, lectura veinte minutos, meditación treinta minutos y la misión diaria de diario con respuesta Sí/No.
+- Fuerza cuatro veces por semana, cardio tres, referencia de 1500 kcal, tres litros de agua, un scoop de proteína, lectura veinte minutos y meditación treinta minutos.
 - Registro de claridad mental, paciencia y estrés del 1 al 5. Es opcional y no concede ni resta puntos.
 - Temporizadores de lectura y meditación: registran minutos al pausarlos o al alcanzar el objetivo. Si sales de la pantalla, el temporizador conserva su inicio y se actualiza al volver a la misión.
 - Dashboard con widgets reordenables, ocultables y en dos tamaños; gráficos, calendario de constancia y frases personales fijadas o rotativas.
